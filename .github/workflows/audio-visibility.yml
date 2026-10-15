@@ -1,0 +1,24 @@
+name: Audio visibility regression
+on:
+  push:
+    branches:
+      - fix/audio-pause-background
+  pull_request:
+    paths:
+      - js/core/audio.js
+      - tests/audio-visibility.test.cjs
+      - .github/workflows/audio-visibility.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audio-visibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check js/core/audio.js
+      - run: node --test tests/audio-visibility.test.cjs
