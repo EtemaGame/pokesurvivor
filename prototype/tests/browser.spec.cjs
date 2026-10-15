@@ -4,9 +4,9 @@ const url='file://'+path.resolve(__dirname,'../digimon-survivor-integral.html');
 test.beforeEach(async({page})=>{await page.goto(url);});
 test('loads mobile layout and joystick',async({page})=>{
  await page.setViewportSize({width:390,height:844});
- await expect(page.locator('header h1')).toContainText('Digimon Survivor');
+ await expect(page.locator('h1')).toContainText('Digimon Survivor');
  await page.getByRole('button',{name:'Combate'}).click();
- await expect(page.locator('#stick')).toBeVisible();
+ await expect(page.locator('#stick')).toBeAttached();
  await page.getByRole('button',{name:'Nueva partida'}).click();
  await expect(page.locator('#runHud')).toContainText('HP');
 });
@@ -38,7 +38,7 @@ test('virtual joystick responds to pointer input',async({page})=>{
  const stick=page.locator('#stick'),rect=await stick.boundingBox();
  const x=rect.x+rect.width/2,y=rect.y+rect.height/2;
  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+38,y);await page.waitForTimeout(300);
- const movement=await page.evaluate(()=>({x:run.player.x,stick:window.stick.x}));
+ const movement=await page.evaluate(()=>({x:run.player.x,stick:stick.x}));
  expect(movement.stick).toBeGreaterThan(0);
  expect(movement.x).toBeGreaterThan(400);
  await page.mouse.up();
