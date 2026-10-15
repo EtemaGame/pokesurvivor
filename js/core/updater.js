@@ -36,8 +36,14 @@ G.Updater = (() => {
 
   /** ¿Se puede recargar ahora sin cortar nada? */
   function safe() {
-    if (!G.Game || G.Game.state !== 'ui') return false;                   // en partida o en el resumen
-    if (['scr-gacha', 'scr-upgrades', 'scr-settings'].some(id => document.getElementById(id) && G.UI.isOpen(id))) return false;
+    if (!G.Game || G.Game.state !== 'ui') return false;  // en partida o en el resumen
+    // Nunca recargar mientras se juega con amigos o se navega por una pantalla
+    // interactiva: únicamente en el menú principal, sin ningún panel abierto.
+    if (!G.UI || !G.UI.isOpen('scr-menu') || (G.Social && G.Social.room)) return false;
+    const panels = ['scr-login', 'scr-test', 'scr-result', 'scr-starters', 'scr-dex',
+      'scr-upgrades', 'scr-gacha', 'scr-friends', 'scr-lobby', 'scr-rank',
+      'scr-item', 'scr-goals', 'scr-bond', 'scr-mod', 'scr-settings'];
+    if (panels.some(id => document.getElementById(id) && G.UI.isOpen(id))) return false;
     const fx = document.getElementById('pull-fx');
     if (fx && !fx.classList.contains('hidden')) return false;             // tirada del gacha en marcha
     const a = document.activeElement;
