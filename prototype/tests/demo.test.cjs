@@ -8,3 +8,5 @@ test('core gameplay and economy are connected',()=>{for(const fn of ['start','up
 test('victory requires boss defeated',()=>{assert.match(html,/const bossAlive=r\.enemies\.some\(e=>e\.boss\)/);assert.match(html,/finish\(!bossAlive\)/);});
 test('saved progress key remains compatible with v0.2',()=>{assert.match(html,/digimon-survivor-prototype-v2/);});
 test('all banners, probabilities and stage definitions exist',()=>{assert.match(html,/WEIGHTS=\[50,30,15,4,1\]/);assert.match(html,/BANNERS=\['General','Dragons Roar','Nature Spirits'\]/);});
+
+test('boss has health bar and victory follows its defeat',()=>{assert.match(html,/maxHp:55/);assert.match(html,/e\.hp\/e\.maxHp/);assert.match(html,/else if\(r\.boss&&!r\.enemies\.some\(e=>e\.boss\)\)\{finish\(true\)/);});
