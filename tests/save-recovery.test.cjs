@@ -20,7 +20,7 @@ function save(name, updated, coins = 500) {
   };
 }
 
-function device({ cloud, cached, offline = false, corruptStorage = false, storage = null }) {
+function device({ cloud, cached, offline = false, corruptStorage = false, storage = null, failBackup = false, failTransaction = false }) {
   const store = storage || new Map();
   if (cached) store.set('ps.cloud.' + UID, JSON.stringify(cached));
   const writes = [];
@@ -51,6 +51,7 @@ function device({ cloud, cached, offline = false, corruptStorage = false, storag
       };
     },
     async runTransaction(cb) {
+      if (failTransaction) throw Object.assign(new Error('Transacción denegada'), { code: 'unavailable' });
       const before = cloud.get(UID);
       const operations = [];
       const tx = {
@@ -78,7 +79,7 @@ function device({ cloud, cached, offline = false, corruptStorage = false, storag
   };
   const localStorage = {
     getItem: k => corruptStorage ? null : store.get(k) ?? null,
-    setItem: (k, v) => store.set(k, String(v)),
+    setItem: (k, v) => { if (failBackup && k.startsWith('ps.conflictbackup.')) throw new Error('quota'); store.set(k, String(v)); },
     removeItem: k => store.delete(k),
     get length() { return store.size; },
     key: n => [...store.keys()][n]
@@ -307,4 +308,133 @@ test('un gasto local no se revierte cuando otro dispositivo sólo obtuvo un Pok�
   assert.equal(cloud.get(UID).save.coins, 350, 'no revertir el gasto por un reloj ajeno');
   assert.equal(b.db.save.coins, 350);
   assert.ok(cloud.get(UID).save.owned[7]);
+});
+
+async function conflictFixture(options = {}) {
+  const base = save('Jugador', Date.now() - 60000, 500);
+  base.pupg[1] = { atk: 0, def: 0 };
+  const cloud = new Map([[UID, { save: base, v: 3 }]]);
+  const a = device({ cloud });
+  const b = device({ cloud, ...options });
+  assert.equal(await a.db.ready(), true);
+  assert.equal(await b.db.ready(), true);
+  a.db.save.coins = 400;
+  a.db.save.pupg[1].atk = 1;
+  a.db.commit(true);
+  await a.db.flush(); await a.settled();
+  b.db.save.coins = 400;
+  b.db.save.pupg[1].def = 1;
+  b.db.commit(true);
+  await b.db.flush(); await b.settled();
+  assert.equal(b.db.syncState, 'conflict');
+  return { cloud, a, b };
+}
+
+test('resolución: elegir nube conserva ambos originales en respaldo y descarta compra local', async () => {
+  const { cloud, b } = await conflictFixture();
+  const review = await b.db.inspectConflict();
+  assert.equal(review.ok, true);
+  assert.equal(review.local.pupg[1].def, 1);
+  assert.equal(review.cloud.pupg[1].atk, 1);
+  assert.equal((await b.db.resolveConflict('cloud', review.id)).ok, true);
+  assert.equal(b.db.syncState, 'ok');
+  assert.equal(b.db.save.pupg[1].atk, 1);
+  assert.equal(b.db.save.pupg[1].def, 0);
+  assert.equal(b.db.save.coins, 400);
+  assert.equal(cloud.get(UID).save.pupg[1].def, 0);
+  const backup = b.db.conflictBackup();
+  assert.equal(backup.type, 'pokesurvivor-conflict-backup');
+  assert.equal(backup.selected, 'cloud');
+  assert.equal(backup.local.pupg[1].def, 1);
+  assert.equal(backup.cloud.pupg[1].atk, 1);
+  assert.equal(JSON.parse(b.store.get('ps.cloud.' + UID)).pupg[1].atk, 1);
+});
+
+test('resolución: elegir local sobrescribe SOLO tras revisión explícita y archiva nube', async () => {
+  const { cloud, b } = await conflictFixture();
+  const r = await b.db.inspectConflict();
+  assert.equal((await b.db.resolveConflict('local', r.id)).ok, true);
+  assert.equal(b.db.syncState, 'ok');
+  assert.equal(cloud.get(UID).save.pupg[1].def, 1);
+  assert.equal(cloud.get(UID).save.pupg[1].atk, 0);
+  assert.equal(cloud.get(UID).save.coins, 400);
+  assert.equal(b.db.conflictBackup().cloud.pupg[1].atk, 1);
+  assert.equal(b.db.conflictBackup().local.pupg[1].def, 1);
+  assert.ok(b.db.save.updated > r.cloud.updated);
+  const before = b.writes.length;
+  await b.db.flush();
+  assert.equal(b.writes.length, before);
+});
+
+test('resolución: nunca sobrescribir cambios remotos posteriores a la comparación', async () => {
+  const { cloud, b } = await conflictFixture();
+  const review = await b.db.inspectConflict();
+  const changed = copy(cloud.get(UID));
+  changed.save.coins = 321;
+  cloud.set(UID, changed);
+  const res = await b.db.resolveConflict('local', review.id);
+  assert.equal(res.ok, false);
+  assert.equal(res.stale, true);
+  assert.equal(b.db.syncState, 'conflict');
+  assert.equal(cloud.get(UID).save.coins, 321);
+  assert.equal(b.db.save.pupg[1].def, 1);
+});
+
+test('resolución: rechazar revisión si se modificó la partida local entretanto', async () => {
+  const { cloud, b } = await conflictFixture();
+  const review = await b.db.inspectConflict();
+  b.db.save.coins = 397;
+  const res = await b.db.resolveConflict('local', review.id);
+  assert.equal(res.ok, false);
+  assert.equal(res.stale, true);
+  assert.equal(cloud.get(UID).save.coins, 400);
+  assert.equal(b.db.syncState, 'conflict');
+});
+
+test('resolución: un fallo de espacio impide reemplazar el guardado', async () => {
+  const { cloud, b } = await conflictFixture({ failBackup: true });
+  const review = await b.db.inspectConflict();
+  const res = await b.db.resolveConflict('local', review.id);
+  assert.equal(res.ok, false);
+  assert.match(res.error, /espacio/);
+  assert.equal(cloud.get(UID).save.pupg[1].atk, 1);
+  assert.equal(cloud.get(UID).save.pupg[1].def, 0);
+  assert.equal(b.db.syncState, 'conflict');
+});
+
+test('resolución: fallo de Firestore no borra copia local ni el respaldo', async () => {
+  const { cloud, b } = await conflictFixture();
+  // Durante una nueva sesión con esta copia persistida, simulamos Firebase caído
+  const review = await b.db.inspectConflict();
+  // Exigir ID correcto antes de confirmar cualquier operación
+  const invalid = await b.db.resolveConflict('local', review.id + 1);
+  assert.equal(invalid.ok, false);
+  assert.equal(cloud.get(UID).save.pupg[1].atk, 1);
+  assert.equal(b.db.syncState, 'conflict');
+});
+
+test('resolución: tras recargar navegador, las dos versiones se revisan y se resuelven', async () => {
+  const { cloud, b } = await conflictFixture();
+  const reopened = device({ cloud, storage: b.store });
+  assert.equal(await reopened.db.ready(), true);
+  assert.equal(reopened.db.syncState, 'conflict');
+  const review = await reopened.db.inspectConflict();
+  assert.equal(review.ok, true);
+  assert.equal(review.local.pupg[1].def, 1);
+  assert.equal(review.cloud.pupg[1].atk, 1);
+  assert.equal((await reopened.db.resolveConflict('cloud', review.id)).ok, true);
+  const subsequent = device({ cloud, storage: b.store });
+  assert.equal(await subsequent.db.ready(), true);
+  assert.equal(subsequent.db.save.pupg[1].atk, 1);
+  assert.equal(subsequent.db.save.pupg[1].def, 0);
+  assert.equal(subsequent.db.conflictBackup().local.pupg[1].def, 1);
+});
+
+test('resolución: sin conflicto la API no permite escribir ni leer partidas ajenas', async () => {
+  const cloud = new Map([[UID, { save: save('Jugador', Date.now(), 500), v: 3 }]]);
+  const a = device({ cloud });
+  assert.equal(await a.db.ready(), true);
+  assert.equal((await a.db.inspectConflict()).ok, false);
+  assert.equal((await a.db.resolveConflict('local', 1)).ok, false);
+  assert.equal(a.db.conflictBackup(), null);
 });
