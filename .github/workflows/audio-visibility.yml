@@ -22,3 +22,4 @@ jobs:
           node-version: '22'
       - run: node --check js/core/audio.js
       - run: node --test tests/audio-visibility.test.cjs
+      - run: node tools/build.js
