@@ -619,12 +619,14 @@ G.DB = (() => {
     let merged = null;
     const ref = docRef(accountUid);
     const initialSave = plain(save);
+    // Capturar la base junto al UID; otro login puede empezar antes de tx.get().
+    const baseForWrite = observedRemote;
     const tr = fs.runTransaction(async tx => {
       const snap = await tx.get(ref);
       const remote = snap.exists ? migrate(snap.data().save) : null;
       // Nunca leer una partida ajena si el usuario cambia durante tx.get().
       const source = currentSession(epoch, accountUid) ? plain(save) : initialSave;
-      if (remote && concurrentEconomyChanges(observedRemote, source, remote))
+      if (remote && concurrentEconomyChanges(baseForWrite, source, remote))
         throw { code: 'save/merge-conflict' };
       merged = remote ? merge(source, remote) : source;
       const doc = { save: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), v: VERSION };
