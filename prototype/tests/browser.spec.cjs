@@ -125,3 +125,19 @@ test('runner is faster and tank has more health',async({page})=>{
  expect(outcome.runnerX).toBeGreaterThan(outcome.tankX);
  expect(outcome.tankHp).toBeGreaterThan(outcome.runnerHp);
 });
+
+test('enemies are Digimon and boss is a Mega Digimon',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const outcome=await page.evaluate(()=>{
+  run.spawn=0;update(.016);
+  const enemy=run.enemies.find(e=>!e.boss);
+  run.time=65;run.spawn=999;update(.016);
+  const boss=run.enemies.find(e=>e.boss);
+  return {enemyId:enemy.speciesId,enemyStage:byId[enemy.speciesId].stage,bossId:boss.speciesId,bossStage:byId[boss.speciesId].stage};
+ });
+ expect(outcome.enemyId).toBeTruthy();
+ expect(outcome.enemyStage).toBe('Rookie');
+ expect(outcome.bossId).toBeTruthy();
+ expect(outcome.bossStage).toBe('Mega');
+});
