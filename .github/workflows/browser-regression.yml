@@ -5,6 +5,7 @@ on:
       - work/browser-pwa-reliability
       - work/save-integrity
       - fix/account-session-isolation
+      - fix/cross-device-save-recovery
 
 permissions:
   contents: write
@@ -25,6 +26,7 @@ jobs:
       - run: node --test tests/browser-pwa.test.cjs
       - run: node --test tests/save-integrity.test.cjs
       - run: node --test tests/account-session.test.cjs
+      - run: node --test tests/save-recovery.test.cjs
       - run: node --test tests/browser-chromium.test.cjs
       - name: Commit generated browser preview (fork branch only)
         run: |
