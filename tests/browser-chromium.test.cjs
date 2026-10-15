@@ -68,7 +68,7 @@ async function connectCDP(port) {
     send,
     async evaluate(expression) {
       const v = await send('Runtime.evaluate', { expression, returnByValue: true });
-      if (v.exceptionDetails) throw Error(v.exceptionDetails.text);
+      if (v.exceptionDetails) throw Error(v.exceptionDetails.exception?.description || v.exceptionDetails.text);
       return v.result.value;
     },
     close() { ws.close(); }
@@ -90,12 +90,15 @@ const pageState = `(() => {
 })()`;
 
 async function until(fn, condition) {
+  let lastError = null;
   for (let i = 0; i < 100; i++) {
-    const value = await fn();
-    if (condition(value)) return value;
+    try {
+      const value = await fn();
+      if (condition(value)) return value;
+    } catch (e) { lastError = e; } // Puede cambiar el contexto JS durante una navegación.
     await pause(100);
   }
-  throw new Error('No se alcanzó el estado esperado del navegador');
+  throw new Error('No se alcanzó el estado esperado del navegador' + (lastError ? ': ' + lastError.message : ''));
 }
 
 test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizontal móvil', { timeout: 40000 }, async () => {
