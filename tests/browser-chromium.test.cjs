@@ -81,7 +81,7 @@ const pageState = `(() => {
   const sheet = document.querySelector('link[href*="css/style.css?v="]');
   return {
     ready: document.readyState,
-    lang: document.documentElement.lang,
+    lang: document.documentElement ? document.documentElement.lang : null,
     canvasWidth: cv ? cv.getBoundingClientRect().width : 0,
     canvasHeight: cv ? cv.getBoundingClientRect().height : 0,
     jsVersion: el ? el.getAttribute('src').split('v=')[1] : null,
@@ -120,6 +120,8 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
     await until(async () => fs.existsSync(portFile) ? fs.readFileSync(portFile, 'utf8').split('\n')[0] : null, Boolean);
     const port = +fs.readFileSync(portFile, 'utf8').split('\n')[0];
     cdp = await connectCDP(port);
+    await cdp.send('Page.enable');
+    await cdp.send('Page.navigate', { url: address + '/index.html' });
     const revision = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'))).v;
     const pc = await until(() => cdp.evaluate(pageState),
       s => s.ready === 'complete' && s.lang === 'es' && s.canvasWidth > 300);
