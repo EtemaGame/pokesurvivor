@@ -9,6 +9,7 @@ on:
       - fix/save-clock-proof
       - fix/offline-concurrent-save-conflicts
       - feat/save-conflict-review
+      - feat/save-conflict-clear-diff
 
 concurrency:
   group: regression-${{ github.ref_name }}
