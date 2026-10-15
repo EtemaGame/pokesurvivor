@@ -62,6 +62,7 @@ function harness({ delayedSuspend = false } = {}) {
     localStorage: { getItem() { return null; } },
     addEventListener(name, cb) { on(windowEvents, name, cb); },
     setTimeout() { return 1; },
+    setInterval() { return 1; },
     performance: { now() { return 0; } },
     console
   };
