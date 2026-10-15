@@ -7,6 +7,7 @@ on:
       - fix/account-session-isolation
       - fix/cross-device-save-recovery
       - fix/save-clock-proof
+      - fix/offline-concurrent-save-conflicts
 
 permissions:
   contents: write
