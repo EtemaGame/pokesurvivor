@@ -57,7 +57,7 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
                 await heldRead;
               }
               const doc = records.get(uid);
-              return { exists: !!doc, data: () => doc };
+              return { exists: !!doc, data: () => doc && JSON.parse(JSON.stringify(doc)) };
             },
             async delete() { records.delete(uid); }
           };
@@ -72,7 +72,7 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
           events.push('transaction:get:' + ref.uid);
           if (ref.uid === 'uid-A') await heldA;
           const doc = records.get(ref.uid);
-          return { exists: !!doc, data: () => doc };
+          return { exists: !!doc, data: () => doc && JSON.parse(JSON.stringify(doc)) };
         },
         set(ref, data) { writes.push([ref.uid, data]); }
       };
