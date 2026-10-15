@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - work/browser-pwa-reliability
+      - work/save-integrity
 
 permissions:
   contents: write
@@ -21,6 +22,7 @@ jobs:
       - run: node tools/export_data.js
       - run: python3 tools/make_seo_pages.py
       - run: node --test tests/browser-pwa.test.cjs
+      - run: node --test tests/save-integrity.test.cjs
       - run: node --test tests/browser-chromium.test.cjs
       - name: Commit generated browser preview (fork branch only)
         run: |
@@ -29,5 +31,5 @@ jobs:
           git add index.html en/index.html js/app.min.js version.json
           if ! git diff --cached --quiet; then
             git commit -m 'build: refresh fork browser artifacts [skip ci]'
-            git push origin HEAD:work/browser-pwa-reliability
+            git push origin HEAD:${GITHUB_REF_NAME}
           fi
