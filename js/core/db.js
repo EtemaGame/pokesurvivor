@@ -26,7 +26,7 @@
  */
 G.DB = (() => {
   const K_ACC = 'ps.accounts', K_SES = 'ps.session', K_SAVE = 'ps.save.';
-  const K_CLOUD = 'ps.cloud.', K_MIGRATED = 'ps.migrated.', K_BASE = 'ps.cloudbase.';
+  const K_CLOUD = 'ps.cloud.', K_MIGRATED = 'ps.migrated.', K_BASE = 'ps.cloudbase.', K_BACKUP = 'ps.conflictbackup.';
   const VERSION = 3;
   const START_COINS = 500;
   const SDK = 'https://www.gstatic.com/firebasejs/13.0.0/';
@@ -321,6 +321,7 @@ G.DB = (() => {
   // local. Hace posible detectar dos gastos divergentes sin sumar monedas o
   // aceptar gratis dos compras. Se guarda también para inicios offline.
   let observedRemote = null, syncBlocked = false;
+  let conflictReview = null, reviewNumber = 0, resolvingConflict = false;
   function currentSession(epoch, accountUid) {
     return sessionEpoch === epoch && uid === accountUid && !guest && !!save;
   }
@@ -329,6 +330,7 @@ G.DB = (() => {
     pushT = retryT = 0; pushDue = 0;
     pushing = null; pending = false; lastPush = 0; fails = 0;
     observedRemote = null; syncBlocked = false;
+    conflictReview = null; resolvingConflict = false;
   }
   // Como mucho una subida cada 30 min (con miles de jugadores, cada 5 min
   // eran decenas de miles de escrituras por hora); lo que cuesta algo
@@ -720,6 +722,141 @@ G.DB = (() => {
     return work;
   }
 
+
+  // Las copias se eligen ENTERAS: no se combinan compras de dos partidas que
+  // gastaron el mismo saldo. Se preservan ambas antes de reemplazar cualquiera.
+  const normalizedDoc = o => {
+    if (Array.isArray(o)) return o.map(normalizedDoc);
+    if (isObj(o)) {
+      const result = {};
+      for (const k of Object.keys(o).sort()) result[k] = normalizedDoc(o[k]);
+      return result;
+    }
+    return o;
+  };
+  const sameSnapshot = (a, b) =>
+    JSON.stringify(normalizedDoc(a)) === JSON.stringify(normalizedDoc(b));
+  const validConflictSession = (epoch, accountUid) =>
+    mode === 'cloud' && syncBlocked && !resolvingConflict && !deleting &&
+    currentSession(epoch, accountUid) && auth.currentUser?.uid === accountUid;
+
+  async function inspectConflict() {
+    if (!syncBlocked || !uid || !save || guest || mode !== 'cloud')
+      return { ok: false, error: 'No hay un conflicto de sincronización en esta cuenta.' };
+    const epoch = sessionEpoch, accountUid = uid;
+    if (resolvingConflict) return { ok: false, error: 'La resolución ya está en curso.' };
+    try {
+      const snapshot = await docRef(accountUid).get(); // lectura nueva, nunca una copia en caché inventada
+      if (!validConflictSession(epoch, accountUid))
+        return { ok: false, error: 'La cuenta cambió durante la consulta.' };
+      if (!snapshot.exists || !validCloudSave(snapshot.data()?.save))
+        return { ok: false, error: 'La partida remota ya no existe o está incompleta. No se ha cambiado nada.' };
+      const local = plain(save), remoteDoc = plain(snapshot.data());
+      const id = ++reviewNumber;
+      conflictReview = { id, epoch, uid: accountUid, local, remoteDoc };
+      return { ok: true, id, local: plain(local), cloud: plain(remoteDoc.save) };
+    } catch (e) {
+      return { ok: false, error: 'No se pudo leer la nube; comprueba la conexión. ' + authError(e) };
+    }
+  }
+
+  // Sólo se concede permiso para resolver después de consultar ambas partidas.
+  // Cambios del juego en otra pestaña o una actualización remota invalidan la
+  // revisión. Nunca sobrescribir una versión que el usuario no ha visto.
+  async function resolveConflict(choice, id) {
+    if (choice !== 'cloud' && choice !== 'local')
+      return { ok: false, error: 'Elige una de las dos partidas.' };
+    const review = conflictReview;
+    if (!review || review.id !== id || !validConflictSession(review.epoch, review.uid))
+      return { ok: false, error: 'La comparación caducó. Vuelve a revisar ambas partidas.' };
+    if (!sameSnapshot(plain(save), review.local))
+      return { ok: false, stale: true, error: 'La partida local cambió. Revísala otra vez antes de elegir.' };
+    if (inFlightTransactions.size)
+      return { ok: false, error: 'Hay una escritura anterior pendiente. No es seguro resolver todavía.' };
+    resolvingConflict = true;
+    const accountUid = review.uid;
+    const epoch = review.epoch;
+    try {
+      // Comprobar remota ANTES de crear el backup, sin resolver si otra
+      // pestaña modificó la nube entre la comparación y la elección.
+      const fresh = await docRef(accountUid).get();
+      if (!currentSession(epoch, accountUid) || auth.currentUser?.uid !== accountUid)
+        throw { code: 'save/session-changed' };
+      if (!fresh.exists || !validCloudSave(fresh.data()?.save) ||
+          !sameSnapshot(plain(fresh.data()), review.remoteDoc)) {
+        conflictReview = null;
+        return { ok: false, stale: true, error: 'La nube cambió. Se necesita una comparación nueva; nada fue reemplazado.' };
+      }
+      const backup = {
+        type: 'pokesurvivor-conflict-backup', version: 1, accountUid,
+        savedAt: new Date().toISOString(), selected: choice,
+        local: plain(review.local), cloud: plain(review.remoteDoc.save)
+      };
+      // Dos copias completas juntas y fuera del cache activo de la partida.
+      // Si el navegador no puede reservar espacio, es obligatorio abortar.
+      if (!write(K_BACKUP + accountUid, backup))
+        return { ok: false, error: 'Sin espacio para guardar las dos copias de seguridad. Libera espacio o descárgalas; no se ha modificado la nube.' };
+      if (!sameSnapshot(plain(save), review.local))
+        return { ok: false, stale: true, error: 'La partida local cambió mientras se revisaba. Inténtalo otra vez.' };
+      if (choice === 'local') {
+        const selected = plain(review.local);
+        selected.updated = Math.max(Date.now(), (+selected.updated || 0) + 1,
+          (+review.remoteDoc.save.updated || 0) + 1);
+        const transaction = fs.runTransaction(async tx => {
+          const snap = await tx.get(docRef(accountUid));
+          if (!snap.exists || !validCloudSave(snap.data()?.save) ||
+              !sameSnapshot(plain(snap.data()), review.remoteDoc))
+            throw { code: 'save/review-stale' };
+          if (!currentSession(epoch, accountUid) || auth.currentUser?.uid !== accountUid)
+            throw { code: 'save/session-changed' };
+          const doc = { save: selected, v: VERSION,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+          if (snap.data().ban === true) doc.ban = true;
+          tx.set(docRef(accountUid), doc);
+        });
+        inFlightTransactions.add(transaction);
+        try { await transaction; } finally { inFlightTransactions.delete(transaction); }
+        // Si el inicio de otra sesión ocurre tras el commit, no contaminarla.
+        if (!currentSession(epoch, accountUid) || auth.currentUser?.uid !== accountUid)
+          return { ok: false, error: 'El guardado de la cuenta anterior terminó; vuelve a entrar para comprobarlo.' };
+        applyInPlace(migrate(selected));
+        observedRemote = economySnapshot(selected);
+      } else {
+        // Elegir la nube no modifica el servidor, pero reemplaza deliberadamente
+        // la vista y caché local, tras conservar ambas en la copia de seguridad.
+        applyInPlace(migrate(review.remoteDoc.save));
+        observedRemote = economySnapshot(review.remoteDoc.save);
+      }
+      write(K_BASE + accountUid, observedRemote);
+      if (!write(K_CLOUD + accountUid, save)) {
+        // La copia completa sigue en K_BACKUP, y la nube (si se eligió local)
+        // ya está confirmada. No fingir que quedó cacheada correctamente.
+        return { ok: false, error: 'No se pudo actualizar la caché del navegador. La copia de seguridad permanece guardada. Reinicia sesión y comprueba la nube.' };
+      }
+      syncBlocked = false; pending = false; conflictReview = null;
+      write(K_OK + accountUid, Date.now());
+      lastPush = Date.now();
+      setSync('ok');
+      if (G.UI?.refreshCoins) G.UI.refreshCoins();
+      return { ok: true, backupKey: K_BACKUP + accountUid };
+    } catch (e) {
+      if (e?.code === 'save/review-stale') {
+        conflictReview = null;
+        return { ok: false, stale: true, error: 'Otro dispositivo modificó la nube. Revísala de nuevo; no se sobrescribió.' };
+      }
+      return { ok: false, error: 'No se pudo confirmar el cambio. Ambas copias siguen protegidas: ' + authError(e) };
+    } finally {
+      resolvingConflict = false;
+    }
+  }
+
+  function conflictBackup() {
+    if (!uid || guest || mode !== 'cloud') return null;
+    const saved = read(K_BACKUP + uid);
+    return saved && saved.accountUid === uid && saved.type === 'pokesurvivor-conflict-backup'
+      ? plain(saved) : null;
+  }
+
   // Si ya había una subida programada antes, se respeta (una compra no espera a la siguiente partida).
   let pushDue = 0;
   function schedulePush(ms) {
@@ -1001,6 +1138,8 @@ G.DB = (() => {
       // Conservar la copia local si Firebase borra el documento pero falla al
       // borrar la cuenta: puede restaurarse al volver a iniciar sesión.
       remove(K_CLOUD + accountUid);
+      remove(K_BASE + accountUid);
+      remove(K_BACKUP + accountUid);
       if (sessionEpoch === epoch && uid === accountUid) {
         ++sessionEpoch;
         resetSyncSession();
@@ -1054,6 +1193,7 @@ G.DB = (() => {
     get mode() { return mode; },
     get localReason() { return localReason; },
     get syncState() { return syncState; },
+    inspectConflict, resolveConflict, conflictBackup,
     get user() { return user; },
     get guest() { return guest; },
     get save() { return save; },
