@@ -794,7 +794,10 @@ G.DB = (() => {
       };
       // Dos copias completas juntas y fuera del cache activo de la partida.
       // Si el navegador no puede reservar espacio, es obligatorio abortar.
-      if (!write(K_BACKUP + accountUid, backup))
+      // Cada conflicto crea un respaldo nuevo e inmutable; no sobrescribir
+      // el respaldo de una resolución anterior de la misma cuenta.
+      const backupKey = K_BACKUP + accountUid + '.' + Date.now() + '-' + review.id + '-' + Math.floor(Math.random() * 1e9);
+      if (!write(backupKey, backup))
         return { ok: false, error: 'Sin espacio para guardar las dos copias de seguridad. Libera espacio o descárgalas; no se ha modificado la nube.' };
       if (!sameSnapshot(plain(save), review.local))
         return { ok: false, stale: true, error: 'La partida local cambió mientras se revisaba. Inténtalo otra vez.' };
@@ -819,6 +822,15 @@ G.DB = (() => {
         // Si el inicio de otra sesión ocurre tras el commit, no contaminarla.
         if (!currentSession(epoch, accountUid) || auth.currentUser?.uid !== accountUid)
           return { ok: false, error: 'El guardado de la cuenta anterior terminó; vuelve a entrar para comprobarlo.' };
+        if (!sameSnapshot(plain(save), review.local)) {
+          // Durante el await de Firestore pudo haber otra compra. Ya se
+          // confirmó la versión revisada, pero NO tocar ni certificar como
+          // guardado el progreso nuevo; requiere una comparación nueva.
+          write(K_CLOUD + accountUid, save);
+          conflictReview = null;
+          return { ok: false, stale: true,
+            error: 'La nube guardó la versión que confirmaste, pero jugaste mientras terminaba. Tu progreso adicional sigue aquí, pendiente de revisar nuevamente.' };
+        }
         applyInPlace(migrate(selected));
         observedRemote = economySnapshot(selected);
       } else {
@@ -838,7 +850,7 @@ G.DB = (() => {
       lastPush = Date.now();
       setSync('ok');
       if (G.UI?.refreshCoins) G.UI.refreshCoins();
-      return { ok: true, backupKey: K_BACKUP + accountUid };
+      return { ok: true, backupKey };
     } catch (e) {
       if (e?.code === 'save/review-stale') {
         conflictReview = null;
@@ -852,9 +864,17 @@ G.DB = (() => {
 
   function conflictBackup() {
     if (!uid || guest || mode !== 'cloud') return null;
-    const saved = read(K_BACKUP + uid);
-    return saved && saved.accountUid === uid && saved.type === 'pokesurvivor-conflict-backup'
-      ? plain(saved) : null;
+    const prefix = K_BACKUP + uid + '.';
+    let latest = null, latestKey = '';
+    // Recorrer todas las copias sin borrarlas nunca automáticamente.
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(prefix) || k <= latestKey) continue;
+      const saved = read(k);
+      if (!saved || saved.accountUid !== uid || saved.type !== 'pokesurvivor-conflict-backup') continue;
+      latestKey = k; latest = saved;
+    }
+    return latest && plain(latest);
   }
 
   // Si ya había una subida programada antes, se respeta (una compra no espera a la siguiente partida).
@@ -1139,6 +1159,13 @@ G.DB = (() => {
       // borrar la cuenta: puede restaurarse al volver a iniciar sesión.
       remove(K_CLOUD + accountUid);
       remove(K_BASE + accountUid);
+      // Borrar también los respaldos de conflictos al BORRAR definitivamente
+      // la cuenta: son datos personales persistidos sólo en el navegador.
+      const prefix = K_BACKUP + accountUid + '.';
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix)) remove(k);
+      }
       remove(K_BACKUP + accountUid);
       if (sessionEpoch === epoch && uid === accountUid) {
         ++sessionEpoch;
