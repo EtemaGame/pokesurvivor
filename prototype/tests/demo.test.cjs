@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'digimon-survivor-integral.html'),'utf8');
-const names=['state-ui','gacha-engine','gacha','combat','input'];
+const names=['state-ui','gacha-engine','gacha','combat-engine','combat','input'];
 const modules=Object.fromEntries(names.map(n=>[n,fs.readFileSync(path.join(root,'js',n+'.js'),'utf8')]));
-test('HTML loads five scripts in dependency order',()=>{
+test('HTML loads six scripts in dependency order',()=>{
  const refs=[...html.matchAll(/<script src="([^"]+)"\s*><\/script>/g)].map(m=>m[1]);
  assert.deepEqual(refs,names.map(n=>'js/'+n+'.js'));
 });
@@ -47,4 +47,22 @@ test('points accumulate independently by banner',()=>{
  let state=engine.draw(initial(),config,'General',1,()=>0).state;
  state=engine.draw(state,config,'Dragons Roar',1,()=>0).state;
  assert.equal(state.points.General,1);assert.equal(state.points['Dragons Roar'],1);
+});
+
+const combat=require('../js/combat-engine.js');
+test('all attack profiles have valid movement and damage',()=>{
+ for(const element of ['Fire','Ice','Electric','Air','Light','Dark','Neutral']){
+  const s=combat.projectile(element,24,0,0,0);
+  assert.ok(s.vx>0);assert.ok(s.damage>0);assert.equal(s.vy,0);
+ }
+});
+test('ice slows an enemy and electric projectile pierces once',()=>{
+ const ice=combat.projectile('Ice',24,0,0,0),enemy={uid:1,hp:20};
+ assert.equal(combat.applyHit(ice,enemy),true);assert.ok(enemy.slowUntil>0);assert.equal(ice.ttl,0);
+ const electric=combat.projectile('Electric',24,0,0,0),a={uid:2,hp:20},b={uid:3,hp:20};
+ assert.equal(combat.applyHit(electric,a),true);assert.ok(electric.ttl>0);
+ assert.equal(combat.applyHit(electric,a),false);assert.equal(combat.applyHit(electric,b),true);assert.equal(electric.ttl,0);
+});
+test('fire deals more damage than ice with same base stat',()=>{
+ assert.ok(combat.projectile('Fire',20,0,0,0).damage>combat.projectile('Ice',20,0,0,0).damage);
 });
