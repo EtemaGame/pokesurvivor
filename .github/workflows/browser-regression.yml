@@ -8,6 +8,7 @@ on:
       - fix/cross-device-save-recovery
       - fix/save-clock-proof
       - fix/offline-concurrent-save-conflicts
+      - feat/save-conflict-review
 
 permissions:
   contents: write
@@ -20,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check js/core/updater.js && node --check sw.js && node --check js/core/audio.js
+      - run: node --check js/core/updater.js && node --check sw.js && node --check js/core/audio.js && node --check js/core/db.js && node --check js/ui/save-conflict-ui.js
       - run: node --test tests/audio-visibility.test.cjs
       - run: node tools/build.js
       - run: node tools/export_data.js
