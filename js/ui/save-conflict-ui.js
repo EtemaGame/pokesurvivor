@@ -48,6 +48,70 @@ G.SaveConflictUI = (() => {
       ['Mejor tiempo (seg.)', num(stats.bestTime)]
     ]) target.appendChild(row(name, value));
   }
+  // Diferencias que una persona puede comprender sin interpretar un archivo JSON.
+  // Solo se muestran campos distintos: no se cambia la decisión ni el guardado.
+  function detail(id, own, other) {
+    const box = $(id);
+    box.querySelectorAll('.conflict-differences').forEach(node => node.remove());
+    const section = document.createElement('div');
+    section.className = 'conflict-differences';
+    const heading = document.createElement('h4');
+    heading.textContent = 'Solo en esta partida o con mayor nivel';
+    section.appendChild(heading);
+    const entries = [];
+    const label = key => {
+      const mon = G.DEX_BY && G.DEX_BY[key];
+      return mon && mon.name ? mon.name : 'Pokémon #' + key;
+    };
+    for (const [field, title] of [['owned', 'Pokémon'], ['shiny', 'Shiny'], ['ach', 'Logro']]) {
+      const mine = own[field] || {}, theirs = other[field] || {};
+      for (const key of Object.keys(mine)) {
+        if (!Object.prototype.hasOwnProperty.call(theirs, key))
+          entries.push(title + ': ' + (field === 'ach' ? key : label(key)));
+      }
+    }
+    const greater = (field, title) => {
+      const mine = own[field] || {}, theirs = other[field] || {};
+      for (const key of Object.keys(mine)) {
+        const a = +mine[key] || 0, b = +theirs[key] || 0;
+        if (a > b) entries.push(title + ' ' + key + ': nivel ' + a + ' (otra: ' + b + ')');
+      }
+    };
+    greater('upgrades', 'Mejora general');
+    const mine = own.pupg || {}, theirs = other.pupg || {};
+    for (const dex of Object.keys(mine)) {
+      const upgrades = mine[dex] || {}, opposite = theirs[dex] || {};
+      for (const k of Object.keys(upgrades)) {
+        const a = +upgrades[k] || 0, b = +opposite[k] || 0;
+        if (a > b) entries.push(label(dex) + ' · ' + k + ': nivel ' + a + ' (otra: ' + b + ')');
+      }
+    }
+    const p = document.createElement('p');
+    if (!entries.length) {
+      p.textContent = 'No hay Pokémon, shinies, logros ni mejoras superiores exclusivos.';
+      section.appendChild(p);
+    } else {
+      p.textContent = entries.length + (entries.length === 1 ? ' diferencia a favor' : ' diferencias a favor');
+      section.appendChild(p);
+      const list = document.createElement('ul');
+      for (const text of entries.slice(0, 30)) {
+        const li = document.createElement('li');
+        li.textContent = text;
+        list.appendChild(li);
+      }
+      section.appendChild(list);
+      if (entries.length > 30) {
+        const more = document.createElement('p');
+        more.textContent = 'Y ' + (entries.length - 30) + ' diferencias más. Ambas copias completas estarán en el respaldo.';
+        section.appendChild(more);
+      }
+    }
+    box.appendChild(section);
+  }
+  function compare(local, cloud) {
+    detail('save-conflict-local', local, cloud);
+    detail('save-conflict-cloud', cloud, local);
+  }
   function downloadJSON(content, filename) {
     const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -86,6 +150,7 @@ G.SaveConflictUI = (() => {
     else {
       display('save-conflict-local', result.local);
       display('save-conflict-cloud', result.cloud);
+      compare(result.local, result.cloud);
       status('Revisa los dos inventarios. Descarga ambas versiones antes de elegir.');
     }
     updateButtons();
