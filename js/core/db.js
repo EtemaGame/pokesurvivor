@@ -423,7 +423,7 @@ G.DB = (() => {
     // Las transacciones ya enviadas siguen perteneciendo a su UID original.
     const epoch = ++sessionEpoch;
     resetSyncSession();
-    uid = u.uid; key = null; save = null;
+    uid = u.uid; key = null; save = null; user = null; guest = false;
     const accountUid = u.uid;
     if (G.Signups) G.Signups.report(u);          // tope de cuentas del mes (net/signups.js)
     const cached = read(K_CLOUD + accountUid);
@@ -773,6 +773,7 @@ G.DB = (() => {
 
   async function deleteAccount(pass) {
     if (guest || !key) return { ok: false, error: 'No hay cuenta que borrar.' };
+    const epoch = sessionEpoch, accountUid = uid;
     if (mode === 'local') {
       const accs = read(K_ACC) || {};
       delete accs[key];
@@ -787,25 +788,40 @@ G.DB = (() => {
       // ese último paso: la cuenta quedaba vacía pero existía y su nombre no
       // se podía volver a usar.
       const cu = auth.currentUser;
+      if (!cu || cu.uid !== accountUid) throw { code: 'save/session-changed' };
       if (nameAccount()) {
         if (!pass) return { ok: false, error: 'Escribe tu contraseña.' };
         await cu.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(cu.email, pass));
       } else {
         await cu.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
       }
+      if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
+        throw { code: 'save/session-changed' };
       deleting = true;
       // Antes de borrar, dejar terminar realmente todas las transacciones,
       // incluso las que ya agotaron el timeout visual de pushNow().
       await waitForUploadsBeforeDelete();
+      if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
+        throw { code: 'save/session-changed' };
       clearTimeout(pushT); clearTimeout(retryT); pending = false;
       stopListening();
-      for (const fn of leaveHooks) await fn('delete');
-      await docRef().delete();
-      await auth.currentUser.delete();
+      for (const fn of leaveHooks) {
+        await fn('delete');
+        if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
+          throw { code: 'save/session-changed' };
+      }
+      await docRef(accountUid).delete();
+      // El usuario Firebase a borrar debe ser el capturado, nunca el actual
+      // después de un cambio de cuenta durante la llamada a Firestore.
+      await cu.delete();
       // Conservar la copia local si Firebase borra el documento pero falla al
       // borrar la cuenta: puede restaurarse al volver a iniciar sesión.
-      remove(K_CLOUD + uid);
-      user = key = save = uid = null;
+      remove(K_CLOUD + accountUid);
+      if (sessionEpoch === epoch && uid === accountUid) {
+        ++sessionEpoch;
+        resetSyncSession();
+        user = key = save = uid = null;
+      }
       return { ok: true };
     } catch (e) { return { ok: false, error: authError(e) }; }
     finally {
