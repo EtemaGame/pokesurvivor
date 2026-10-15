@@ -137,8 +137,12 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
     assert.ok(mobile.canvasHeight <= 390, 'Canvas desborda la altura móvil');
   } finally {
     if (cdp) cdp.close();
-    chrome.kill('SIGKILL');
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise(resolve => chrome.once('exit', resolve));
+      chrome.kill('SIGKILL');
+      await Promise.race([exited, pause(3000)]);
+    }
     await new Promise(resolve => server.close(resolve));
-    fs.rmSync(userDir, { recursive: true, force: true });
+    fs.rmSync(userDir, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 });
   }
 });
