@@ -572,6 +572,48 @@ G.I18n.add({
   'Ese Gmail ya tiene su propia cuenta del juego. Usa otro Gmail.': 'That Gmail already has its own game account. Use another Gmail.',
   'Inicia sesión primero.': 'Sign in first.',
 
+  // ---------------- conflictos de partidas entre dispositivos ----------------
+  'Revisar conflicto de guardado': 'Review save conflict',
+  'Descargar última copia de seguridad': 'Download latest save backup',
+  'Dos partidas diferentes': 'Two different save files',
+  'Decidir después': 'Decide later',
+  'ha detenido la subida': 'has paused cloud syncing',
+  'Este dispositivo': 'This device', 'En la nube': 'In the cloud',
+  'Cargando…': 'Loading…',
+  'Monedas': 'Coins', 'Tickets ×1 / ×10': 'Tickets ×1 / ×10',
+  'Pokémon': 'Pokémon', 'Shinies': 'Shinies',
+  'Mejoras generales': 'Global upgrades', 'Mejoras por Pokémon': 'Pokémon upgrades',
+  'Logros': 'Achievements', 'Partidas': 'Runs',
+  'Mejor tiempo (seg.)': 'Best time (sec.)',
+  '1. Descargar ambas copias (.json)': '1. Download both saves (.json)',
+  'Actualizar comparación': 'Refresh comparison',
+  'Usar la partida de la nube': 'Use the cloud save',
+  'Sustituir la nube por este dispositivo': 'Replace cloud save with this device',
+  'Entiendo que debo elegir una versión completa; la otra quedará en la copia descargada y en este navegador.':
+    'I understand I must choose an entire save; the other remains in the downloaded backup and this browser.',
+  'Dos dispositivos modificaron monedas, tickets o mejoras sin sincronizarse. Para evitar duplicar compras, el juego':
+    'Two devices changed coins, tickets or upgrades without syncing. To prevent duplicate purchases, the game',
+  'Ambas versiones siguen separadas.': 'Both versions are still separate.',
+  'Elige una partida completa. Los Pokémon y mejoras exclusivos de la otra NO se combinan automáticamente. Podrás conservar una copia de seguridad para revisarlos después.':
+    'Choose an entire save. Exclusive Pokémon and upgrades from the other save are NOT automatically merged. You can keep a backup for later review.',
+  'Si otro dispositivo cambia la nube durante la elección, esta operación se cancelará y tendrás que revisarla de nuevo. No cierres el navegador hasta terminar.':
+    'If another device changes the cloud save during your decision, this operation will be canceled and you must review again. Keep this browser open until it finishes.',
+  'Leyendo las dos versiones de la partida…': 'Loading both save files…',
+  'Revisa los dos inventarios. Descarga ambas versiones antes de elegir.':
+    'Compare both inventories. Download both versions before choosing.',
+  'Se solicitó descargar un archivo con ambas partidas. Comprueba que quedó guardado antes de continuar.':
+    'A download with both saves was requested. Check that it was saved before continuing.',
+  'Conflicto resuelto. La otra partida quedó respaldada en este navegador.':
+    'Conflict resolved. The other save remains backed up in this browser.',
+  'No se encontró un respaldo en este navegador.': 'No backup was found in this browser.',
+  'Se solicitó la descarga de la última copia de seguridad.': 'The latest backup download was requested.',
+  'Conflicto entre dispositivos: esta partida sólo se guarda aquí.':
+    'Device conflict: this save is currently stored only here.',
+  'La nube será sustituida por la partida de ESTE DISPOSITIVO. Las diferencias de la otra partida sólo quedarán en el respaldo. ¿Confirmas?':
+    'The cloud save will be REPLACED with this device\'s save. The other save\'s differences will remain only in the backup. Confirm?',
+  'Este dispositivo adoptará la partida de LA NUBE. Sus diferencias locales sólo quedarán en el respaldo. ¿Confirmas?':
+    'This device will adopt the CLOUD save. Its local differences will remain only in the backup. Confirm?',
+
   // ---------------- reportar marcas del ranking ----------------
   'Reportar marca sospechosa': 'Report suspicious record', 'Ya la has reportado': 'You already reported it',
   'Ya has reportado esta marca': 'You already reported this record',
