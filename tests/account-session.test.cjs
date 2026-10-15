@@ -239,3 +239,21 @@ test('borrado: si B entra durante la reautenticación A, no se borra B', async (
   assert.ok(h.records.has('uid-B'));
   assert.equal(h.events.some(e => e.startsWith('auth:delete:')), false);
 });
+
+test('logout A bloqueado por guardado no debe cerrar la nueva sesión B', async () => {
+  const h = harness();
+  assert.equal(await h.DB.ready(), true);
+  h.DB.save.coins = 425;
+  h.DB.commit(true);
+  const leaving = h.DB.logout();
+  await untilEvent(h.events, 'transaction:get:uid-A');
+  assert.equal((await h.DB.login('Beta', 'secret')).ok, true);
+  assert.equal(h.auth.currentUser.uid, 'uid-B');
+  h.unblockA();
+  await leaving;
+  assert.equal(h.DB.fb.uid, 'uid-B');
+  assert.equal(h.DB.save.name, 'Beta');
+  assert.equal(h.auth.currentUser.uid, 'uid-B');
+  assert.equal(h.events.filter(e => e === 'signout').length, 0);
+  assert.equal(h.records.get('uid-A').save.coins, 425);
+});
