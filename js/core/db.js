@@ -497,6 +497,40 @@ G.DB = (() => {
     }
     return false;
   }
+
+  // Sin solapamiento, cada cambio económico sólo tiene un dueño. Alinear
+  // ambas copias ANTES de merge() evita que el timestamp de un Pokémon nuevo
+  // deshaga una compra, o que una compra borre un saldo remoto más reciente.
+  function alignIndependentEconomy(base, local, remote) {
+    if (!base || !local || !remote) return;
+    const ls = economySnapshot(local), rs = economySnapshot(remote);
+    if (!ls || !rs) return;
+    const paths = [['coins']];
+    for (const group of ['tickets', 'pity', 'upgrades']) {
+      const keys = new Set([...Object.keys(base[group] || {}), ...Object.keys(ls[group] || {}), ...Object.keys(rs[group] || {})]);
+      for (const k of keys) paths.push([group, k]);
+    }
+    const dexes = new Set([...Object.keys(base.pupg || {}), ...Object.keys(ls.pupg || {}), ...Object.keys(rs.pupg || {})]);
+    for (const dex of dexes) {
+      const ids = new Set([...Object.keys((base.pupg || {})[dex] || {}),
+        ...Object.keys((ls.pupg || {})[dex] || {}), ...Object.keys((rs.pupg || {})[dex] || {})]);
+      for (const id of ids) paths.push(['pupg', dex, id]);
+    }
+    const get = (obj, p) => p.reduce((o, key) => o && o[key], obj);
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const assign = (obj, p, value) => {
+      let target = obj;
+      for (const key of p.slice(0, -1)) target = target[key] = target[key] || {};
+      if (value === undefined) delete target[p[p.length - 1]];
+      else target[p[p.length - 1]] = value;
+    };
+    for (const p of paths) {
+      const old = get(base, p), a = get(ls, p), b = get(rs, p);
+      if (same(a, old) && !same(b, old)) assign(local, p, b);
+      else if (!same(a, old) && same(b, old)) assign(remote, p, a);
+    }
+  }
+
   const CONFLICT_MSG = 'Conflicto entre dispositivos: tu progreso sigue en este navegador, pero no se enviará a la nube para evitar perder compras. No borres los datos del navegador.';
   function blockConcurrentSync(accountUid) {
     syncBlocked = true; pending = false;
@@ -551,9 +585,12 @@ G.DB = (() => {
     }
     const localSave = cached && isObj(cached) ? migrate(cached) : null;
     const cloudSave = remote && migrate(remote);
-    // Sólo avanzar la base después de descartar un conflicto.
+    // La base leída de la nube debe guardarse ANTES de alinear los saldos.
+    const remoteBase = cloudSave && economySnapshot(cloudSave);
+    if (online && observedRemote && localSave && cloudSave)
+      alignIndependentEconomy(observedRemote, localSave, cloudSave);
     if (online && cloudSave) {
-      observedRemote = economySnapshot(cloudSave);
+      observedRemote = remoteBase;
       write(K_BASE + accountUid, observedRemote);
     }
     let s = merge(localSave, cloudSave);
@@ -628,6 +665,7 @@ G.DB = (() => {
       const source = currentSession(epoch, accountUid) ? plain(save) : initialSave;
       if (remote && concurrentEconomyChanges(baseForWrite, source, remote))
         throw { code: 'save/merge-conflict' };
+      if (remote && baseForWrite) alignIndependentEconomy(baseForWrite, source, remote);
       merged = remote ? merge(source, remote) : source;
       const doc = { save: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), v: VERSION };
       if (snap.exists && snap.data().ban === true) doc.ban = true;
