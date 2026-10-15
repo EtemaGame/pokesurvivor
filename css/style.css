@@ -481,6 +481,10 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .sync.conflict { outline: 2px solid #fff; outline-offset: 1px; }
 .sync.local { background: #9fb1c9; }
 .sync.guest { display: none; }
+.conflict-differences { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--edge); }
+.conflict-differences h4 { margin: 0 0 6px; font-size: 14px; color: var(--gold); }
+.conflict-differences ul { padding-left: 20px; max-height: 180px; overflow-y: auto; margin: 6px 0; }
+.conflict-differences li { margin-bottom: 5px; font-size: 13px; overflow-wrap: anywhere; }
 /* Conflicto entre dispositivos: diálogo por delante del menú y de las capas UI. */
 .save-conflict-overlay { position: fixed; inset: 0; z-index: 82; background: rgba(2, 6, 19, .94);
   display: flex; justify-content: center; align-items: center; padding: 16px; overflow-y: auto; }
