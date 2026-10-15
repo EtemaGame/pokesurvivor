@@ -867,13 +867,15 @@ G.DB = (() => {
     const prefix = K_BACKUP + uid + '.';
     let latest = null, latestKey = '';
     // Recorrer todas las copias sin borrarlas nunca automáticamente.
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k || !k.startsWith(prefix) || k <= latestKey) continue;
-      const saved = read(k);
-      if (!saved || saved.accountUid !== uid || saved.type !== 'pokesurvivor-conflict-backup') continue;
-      latestKey = k; latest = saved;
-    }
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith(prefix) || k <= latestKey) continue;
+        const saved = read(k);
+        if (!saved || saved.accountUid !== uid || saved.type !== 'pokesurvivor-conflict-backup') continue;
+        latestKey = k; latest = saved;
+      }
+    } catch (e) { storageOk = false; return null; }
     return latest && plain(latest);
   }
 
@@ -1162,10 +1164,12 @@ G.DB = (() => {
       // Borrar también los respaldos de conflictos al BORRAR definitivamente
       // la cuenta: son datos personales persistidos sólo en el navegador.
       const prefix = K_BACKUP + accountUid + '.';
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(prefix)) remove(k);
-      }
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(prefix)) remove(k);
+        }
+      } catch (e) { storageOk = false; /* no bloquear borrado remoto */ }
       remove(K_BACKUP + accountUid);
       if (sessionEpoch === epoch && uid === accountUid) {
         ++sessionEpoch;
