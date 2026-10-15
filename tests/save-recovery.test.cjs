@@ -20,8 +20,8 @@ function save(name, updated, coins = 500) {
   };
 }
 
-function device({ cloud, cached, offline = false, corruptStorage = false }) {
-  const store = new Map();
+function device({ cloud, cached, offline = false, corruptStorage = false, storage = null }) {
+  const store = storage || new Map();
   if (cached) store.set('ps.cloud.' + UID, JSON.stringify(cached));
   const writes = [];
   const authUser = { uid: UID, displayName: 'Entrenador' };
@@ -205,4 +205,69 @@ test('gasto posterior al login no se revierte si la nube viene con reloj adelant
   await browser.settled();
   assert.equal(cloud.get(UID).save.coins, 350, 'no debe recuperar monedas ya gastadas');
   assert.equal(browser.db.save.coins, 350, 'la transacción no debe revertir el gasto local');
+});
+
+test('dos dispositivos gastan la misma moneda offline: no se consolidan dos compras con un solo cargo', async () => {
+  const base = save('Jugador', Date.now() - 60000, 500);
+  base.pupg[1] = { atk: 0, def: 0 };
+  const cloud = new Map([[UID, { save: base, v: 3 }]]);
+  const a = device({ cloud }), b = device({ cloud });
+  assert.equal(await a.db.ready(), true);
+  assert.equal(await b.db.ready(), true);
+
+  a.db.save.coins = 400;
+  a.db.save.pupg[1].atk = 1;
+  a.db.commit(true);
+  await a.db.flush();
+  await a.settled();
+  assert.equal(cloud.get(UID).save.coins, 400);
+
+  b.db.save.coins = 400;
+  b.db.save.pupg[1].def = 1;
+  b.db.commit(true);
+  await b.db.flush();
+  await b.settled();
+  assert.equal(b.db.syncState, 'conflict', 'no confirmar dos compras pagando sólo una');
+  assert.equal(cloud.get(UID).save.coins, 400, 'la nube conserva el primer gasto');
+  assert.equal(cloud.get(UID).save.pupg[1].atk, 1);
+  assert.equal(cloud.get(UID).save.pupg[1].def, 0, 'no escribir la compra B sin conciliación');
+  assert.equal(b.db.save.coins, 400, 'el usuario B mantiene su copia sin modificación destructiva');
+  assert.equal(b.db.save.pupg[1].def, 1);
+  assert.equal(JSON.parse(b.store.get('ps.cloud.' + UID)).pupg[1].def, 1);
+  const before = b.writes.length;
+  await b.db.flush();
+  assert.equal(b.writes.length, before, 'no reintentar automáticamente un conflicto irresuelto');
+});
+
+test('al reabrir, una copia local offline con gasto concurrente no se pisa al descargar la nube', async () => {
+  const base = save('Jugador', Date.now() - 60000, 500);
+  base.pupg[1] = { atk: 0, def: 0 };
+  const cloud = new Map([[UID, { save: base, v: 3 }]]);
+  const first = device({ cloud });
+  assert.equal(await first.db.ready(), true);
+  await first.settled();
+  const offlineCopy = device({ cloud, storage: first.store, offline: true });
+  assert.equal(await offlineCopy.db.ready(), true);
+  offlineCopy.db.save.coins = 400;
+  offlineCopy.db.save.pupg[1].def = 1;
+  offlineCopy.db.commit(true);
+  assert.equal(JSON.parse(first.store.get('ps.cloud.' + UID)).coins, 400);
+
+  const other = device({ cloud });
+  assert.equal(await other.db.ready(), true);
+  other.db.save.coins = 400;
+  other.db.save.pupg[1].atk = 1;
+  other.db.commit(true);
+  await other.db.flush();
+  await other.settled();
+
+  const reopening = device({ cloud, storage: first.store });
+  assert.equal(await reopening.db.ready(), true);
+  await reopening.settled();
+  assert.equal(reopening.db.syncState, 'conflict');
+  assert.equal(reopening.db.save.coins, 400);
+  assert.equal(reopening.db.save.pupg[1].def, 1, 'progreso B conservado');
+  assert.equal(cloud.get(UID).save.pupg[1].atk, 1, 'progreso A conservado');
+  assert.equal(cloud.get(UID).save.pupg[1].def, 0, 'nube no modificada');
+  assert.equal(reopening.writes.length, 0);
 });
