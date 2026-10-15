@@ -90,15 +90,16 @@ const pageState = `(() => {
 })()`;
 
 async function until(fn, condition) {
-  let lastError = null;
+  let lastError = null, lastValue = null;
   for (let i = 0; i < 100; i++) {
     try {
       const value = await fn();
+      lastValue = value;
       if (condition(value)) return value;
     } catch (e) { lastError = e; } // Puede cambiar el contexto JS durante una navegación.
     await pause(100);
   }
-  throw new Error('No se alcanzó el estado esperado del navegador' + (lastError ? ': ' + lastError.message : ''));
+  throw new Error('No se alcanzó el estado esperado del navegador; valor=' + JSON.stringify(lastValue) + (lastError ? ': ' + lastError.message : ''));
 }
 
 test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizontal móvil', { timeout: 40000 }, async () => {
