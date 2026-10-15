@@ -190,3 +190,19 @@ test('partida nueva sin documento remoto mantiene el flujo de primer acceso', as
   assert.equal(browser.writes.length, 1);
   assert.equal(cloud.get(UID).save.name, 'Entrenador');
 });
+
+test('gasto posterior al login no se revierte si la nube viene con reloj adelantado', async () => {
+  // A jugó con el reloj +24 h; B inicia sesión después con el reloj correcto.
+  // B primero ve el guardado de A, y LUEGO compra una mejora.
+  const remote = save('Jugador', Date.now() + 86400000, 500);
+  const cloud = new Map([[UID, { save: remote, v: 3 }]]);
+  const browser = device({ cloud });
+  assert.equal(await browser.db.ready(), true);
+  assert.equal(browser.db.save.coins, 500);
+  browser.db.save.coins = 350; // gasto real posterior a la lectura de la nube
+  browser.db.commit(true);
+  await browser.db.flush();
+  await browser.settled();
+  assert.equal(cloud.get(UID).save.coins, 350, 'no debe recuperar monedas ya gastadas');
+  assert.equal(browser.db.save.coins, 350, 'la transacción no debe revertir el gasto local');
+});
