@@ -156,3 +156,27 @@ test('enemy contact damage depends on Digimon species',async({page})=>{
  });
  expect(damages[1]).toBeGreaterThan(damages[0]);
 });
+
+test('wild Digimon spawn outside visible arena',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const spawn=await page.evaluate(()=>{
+  run.spawn=0;update(.001);
+  const e=run.enemies[0];
+  return {x:e.x,y:e.y,speciesId:e.speciesId};
+ });
+ expect(spawn.speciesId).toBeTruthy();
+ expect(spawn.x<0||spawn.x>800||spawn.y<0||spawn.y>480).toBe(true);
+});
+test('ranged Digimon fire visible projectiles and keep distance',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const result=await page.evaluate(()=>{
+  run.spawn=999;run.shot=999;run.player={x:400,y:240};
+  run.enemies=[{uid:999,x:550,y:240,hp:100,boss:false,type:'ranged',speciesId:'angemon',slowUntil:0,cast:0}];
+  update(.016);
+  return {shots:run.enemyShots.length,x:run.enemies[0].x};
+ });
+ expect(result.shots).toBe(1);
+ expect(result.x).toBeGreaterThan(550);
+});
