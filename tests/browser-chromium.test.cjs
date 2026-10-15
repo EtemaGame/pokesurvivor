@@ -85,7 +85,11 @@ const pageState = `(() => {
     canvasWidth: cv ? cv.getBoundingClientRect().width : 0,
     canvasHeight: cv ? cv.getBoundingClientRect().height : 0,
     jsVersion: el ? el.getAttribute('src').split('v=')[1] : null,
-    cssVersion: sheet ? sheet.getAttribute('href').split('v=')[1] : null
+    cssVersion: sheet ? sheet.getAttribute('href').split('v=')[1] : null,
+    conflictDialogMounted: !!document.getElementById('save-conflict-overlay'),
+    conflictDialogHidden: !!document.getElementById('save-conflict-overlay')?.classList.contains('hidden'),
+    conflictDecisionsLocked: !!document.getElementById('save-conflict-use-local')?.disabled &&
+      !!document.getElementById('save-conflict-use-cloud')?.disabled
   };
 })()`;
 
@@ -131,12 +135,17 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
       s => s.ready === 'complete' && ['es', 'en'].includes(s.lang) && s.canvasWidth > 300);
     assert.equal(pc.jsVersion, revision);
     assert.equal(pc.cssVersion, revision);
+    assert.equal(pc.conflictDialogMounted, true);
+    assert.equal(pc.conflictDialogHidden, true);
+    assert.equal(pc.conflictDecisionsLocked, true);
 
     await cdp.send('Page.navigate', { url: address + '/en/' });
     const en = await until(() => cdp.evaluate(pageState),
       s => s.ready === 'complete' && s.lang === 'en' && s.canvasWidth > 300);
     assert.equal(en.jsVersion, revision);
     assert.equal(en.cssVersion, revision);
+    assert.equal(en.conflictDialogMounted, true);
+    assert.equal(en.conflictDecisionsLocked, true);
 
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 844, height: 390, deviceScaleFactor: 3, mobile: true
@@ -144,6 +153,19 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
     const mobile = await until(() => cdp.evaluate(pageState), s => s.canvasWidth > 0);
     assert.ok(mobile.canvasWidth <= 844, 'Canvas desborda la anchura móvil');
     assert.ok(mobile.canvasHeight <= 390, 'Canvas desborda la altura móvil');
+    // Visualizar la comparación en móvil sin autenticación: sólo la geometría.
+    const dialogGeometry = await cdp.evaluate(`(() => {
+      const el = document.getElementById('save-conflict-overlay');
+      el.classList.remove('hidden');
+      const rect = el.querySelector('.save-conflict-box').getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top,
+        viewport: window.innerWidth, totalWidth: el.scrollWidth,
+        controlsLocked: document.getElementById('save-conflict-use-local').disabled };
+    })()`);
+    assert.ok(dialogGeometry.left >= -1, 'Diálogo fuera de pantalla móvil (izquierda)');
+    assert.ok(dialogGeometry.right <= dialogGeometry.viewport + 1, 'Diálogo fuera de pantalla móvil (derecha)');
+    assert.ok(dialogGeometry.totalWidth <= dialogGeometry.viewport + 1, 'El diálogo desborda la pantalla');
+    assert.equal(dialogGeometry.controlsLocked, true);
   } finally {
     if (cdp) cdp.close();
     if (chrome.exitCode === null && chrome.signalCode === null) {
