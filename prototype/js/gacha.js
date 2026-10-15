@@ -1,3 +1,9 @@
-function poolFor(b){return SPECIES.filter(s=>b==='General'||s.field===b);}
-function choose(b,guaranteed){const pool=poolFor(b),eligible=pool.filter(s=>!guaranteed||stageIndex(s)>=1),weights=STAGES.map((st,i)=>eligible.some(s=>s.stage===st)?WEIGHTS[i]:0),sum=weights.reduce((a,v)=>a+v,0);let roll=Math.random()*sum;let stage=STAGES[0];for(let i=0;i<STAGES.length;i++){roll-=weights[i];if(roll<0){stage=STAGES[i];break;}}const options=eligible.filter(s=>s.stage===stage);return options[Math.floor(Math.random()*options.length)];}
-function pull(n){if(data.tickets<n)return message('Necesitas '+n+' DigiTickets');data.tickets-=n;const results=[];for(let i=0;i<n;i++){const pity=data.pity[banner]||0;const s=choose(banner,pity>=9);data.pity[banner]=stageIndex(s)>=1?0:pity+1;data.points[banner]=(data.points[banner]||0)+1;if(data.owned.includes(s.id)){data.coins+=coinValue(s);results.push(s.name+' (duplicado +'+coinValue(s)+' monedas)');}else{data.owned.push(s.id);results.push('¡NUEVO! '+s.name);}}save();render();message(results.join(' · '));}
+function poolFor(b){return DigimonGacha.poolFor(SPECIES,b);}
+function choose(b,guaranteed){return DigimonGacha.choose(SPECIES,b,STAGES,WEIGHTS,guaranteed);}
+function pull(n){
+ const outcome=DigimonGacha.draw(data,{species:SPECIES,stages:STAGES,weights:WEIGHTS,duplicates:DUP},banner,n);
+ if(!outcome.ok)return message('Necesitas '+n+' DigiTickets');
+ data=outcome.state;
+ save();render();
+ message(outcome.results.map(s=>s.duplicate?s.name+' (duplicado +'+s.coins+' monedas)':'¡NUEVO! '+s.name).join(' · '));
+}
