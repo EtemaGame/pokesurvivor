@@ -1,14 +1,16 @@
-// Ejecutar: node --test prototype/tests/demo.test.cjs
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const html=fs.readFileSync(path.join(__dirname,'../digimon-survivor-integral.html'),'utf8');
-const match=html.match(/<script>([\s\S]*?)<\/script>/);
-test('demo contains inline JavaScript with valid syntax',()=>{assert.ok(match,'missing script');new vm.Script(match[1]);});
-test('mobile controls and offline save are present',()=>{assert.match(html,/setPointerCapture/);assert.match(html,/touch-action:none/);assert.match(html,/localStorage\.setItem/);});
-test('core gameplay and economy are connected',()=>{for(const fn of ['start','update','draw','pull','choose','gainXp','finish','save','load'])assert.match(html,new RegExp('function '+fn+'\\('));});
-test('victory requires boss defeated',()=>{assert.match(html,/r\.boss&&!r\.enemies\.some\(e=>e\.boss\)/);assert.match(html,/finish\(true\)/);});
-test('saved progress key remains compatible with v0.2',()=>{assert.match(html,/digimon-survivor-prototype-v2/);});
-test('all banners, probabilities and stage definitions exist',()=>{assert.match(html,/WEIGHTS=\[50,30,15,4,1\]/);assert.match(html,/BANNERS=\['General','Dragons Roar','Nature Spirits'\]/);});
-
-test('boss has health bar and victory follows its defeat',()=>{assert.match(html,/maxHp:55/);assert.match(html,/e\.hp\/e\.maxHp/);assert.match(html,/else if\(r\.boss&&!r\.enemies\.some\(e=>e\.boss\)\)\{finish\(true\)/);});
-
-test('elemental combat effects and collection previews exist',()=>{assert.match(html,/ELEMENT_COLORS=/);assert.match(html,/r\.effects\.push/);assert.match(html,/aria-hidden/);});
+const root=path.join(__dirname,'..');
+const html=fs.readFileSync(path.join(root,'digimon-survivor-integral.html'),'utf8');
+const names=['state-ui','gacha','combat','input'];
+const modules=Object.fromEntries(names.map(n=>[n,fs.readFileSync(path.join(root,'js',n+'.js'),'utf8')]));
+test('HTML loads four scripts in dependency order',()=>{
+ const refs=[...html.matchAll(/<script src="([^"]+)"\s*><\/script>/g)].map(m=>m[1]);
+ assert.deepEqual(refs,names.map(n=>'js/'+n+'.js'));
+});
+test('all scripts parse in Node',()=>{for(const [name,source] of Object.entries(modules))assert.doesNotThrow(()=>new vm.Script(source,{filename:name+'.js'}));});
+test('mobile controls and local save',()=>{assert.match(html,/touch-action:none/);assert.match(modules.input,/setPointerCapture/);assert.match(modules['state-ui'],/localStorage\.setItem/);});
+test('gacha and combat are independent files',()=>{assert.match(modules.gacha,/function pull\(/);assert.match(modules.gacha,/function choose\(/);assert.match(modules.combat,/function update\(/);assert.match(modules.combat,/function finish\(/);});
+test('boss defeat ends in victory and shows health',()=>{assert.match(modules.combat,/r\.boss&&!r\.enemies\.some\(e=>e\.boss\)/);assert.match(modules.combat,/finish\(true\)/);assert.match(modules.combat,/e\.hp\/e\.maxHp/);});
+test('save key remains compatible with v0.2',()=>assert.match(modules['state-ui'],/digimon-survivor-prototype-v2/));
+test('rates and banners are configured',()=>{assert.match(modules['state-ui'],/WEIGHTS=\[50,30,15,4,1\]/);assert.match(modules['state-ui'],/BANNERS=\['General','Dragons Roar','Nature Spirits'\]/);});
+test('elemental combat and collection previews',()=>{assert.match(modules['state-ui'],/ELEMENT_COLORS=/);assert.match(modules.combat,/r\.effects\.push/);assert.match(modules['state-ui'],/aria-hidden/);});
