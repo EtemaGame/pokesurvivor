@@ -68,5 +68,11 @@ html = html.replace(/<!-- dev.html: página fuente[^>]*-->/, '<!-- GENERADO desd
 fs.writeFileSync(OUT, html);
 // Versión publicada: los jugadores la miran cada 5 min y, si cambia, el juego se
 // actualiza solo (en el menú, o al acabar la partida). Ver js/core/updater.js.
-fs.writeFileSync(path.join(ROOT, 'version.json'), JSON.stringify({ v: hash, at: new Date().toISOString() }) + '\n');
+const versionFile = path.join(ROOT, 'version.json');
+let at = new Date().toISOString();
+try {
+  const previous = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+  if (previous.v === hash && previous.at) at = previous.at;
+} catch (e) { /* primera compilación */ }
+fs.writeFileSync(versionFile, JSON.stringify({ v: hash, at }) + '\n');
 console.log(`${SIN_SEO ? '[sin SEO] ' : ''}${EXPOSE ? '[SIN PROTEGER, sólo pruebas] ' : ''}ok: ${files.length} scripts · ${(joined.length / 1024).toFixed(0)} KB -> ${(min.length / 1024).toFixed(0)} KB (app.min.js?v=${hash})`);
