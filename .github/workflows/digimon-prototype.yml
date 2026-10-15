@@ -1,0 +1,17 @@
+name: Digimon Survivor prototype tests
+on:
+  push:
+    branches: [feature/digimon-survivor-v0.1]
+  pull_request:
+    paths:
+      - 'prototype/**'
+      - '.github/workflows/digimon-prototype.yml'
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test prototype/tests/demo.test.cjs
