@@ -25,6 +25,15 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
   ]);
   let unblockA;
   const heldA = new Promise(resolve => { unblockA = resolve; });
+  let holdReauth = false, unblockReauth;
+  const reauthGate = new Promise(resolve => { unblockReauth = resolve; });
+  for (const id of ['a', 'b']) {
+    accounts[id].reauthenticateWithCredential = async () => {
+      events.push('reauth:' + accounts[id].uid);
+      if (holdReauth) await reauthGate;
+    };
+    accounts[id].delete = async () => { events.push('auth:delete:' + accounts[id].uid); };
+  }
   let unblockRead;
   const heldRead = new Promise(resolve => { unblockRead = resolve; });
   let slowNextReadA = false;
@@ -85,6 +94,7 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
   };
   const firebaseAuth = () => auth;
   firebaseAuth.Auth = { Persistence: { LOCAL: 'LOCAL' } };
+  firebaseAuth.EmailAuthProvider = { credential: () => ({}) };
   const firestore = () => db;
   firestore.FieldValue = { serverTimestamp: () => 1 };
   const fb = { initializeApp() {}, auth: firebaseAuth, firestore };
@@ -119,7 +129,8 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
   vm.runInNewContext(SOURCE, ctx, { filename: 'js/core/db.js' });
   return {
     DB: ctx.G.DB, accounts, auth, events, records, storage, timers,
-    unblockA, unblockRead,
+    unblockA, unblockRead, unblockReauth,
+    holdNextReauth() { holdReauth = true; },
     delayNextARead() { slowNextReadA = true; }
   };
 }
@@ -210,4 +221,21 @@ test('una lectura A tardía no puede sobrescribir el login B', async () => {
   assert.equal(resultA.ok, false);
   assert.equal(h.DB.fb.uid, 'uid-B');
   assert.equal(h.DB.save.name, 'Beta');
+});
+
+test('borrado: si B entra durante la reautenticación A, no se borra B', async () => {
+  const h = harness();
+  assert.equal(await h.DB.ready(), true);
+  h.holdNextReauth();
+  const deletionA = h.DB.deleteAccount('secret');
+  await untilEvent(h.events, 'reauth:uid-A');
+  assert.equal((await h.DB.login('Beta', 'secret')).ok, true);
+  h.unblockReauth();
+  const result = await deletionA;
+  assert.equal(result.ok, false);
+  assert.equal(h.DB.fb.uid, 'uid-B');
+  assert.equal(h.DB.save.coins, 900);
+  assert.ok(h.records.has('uid-A'));
+  assert.ok(h.records.has('uid-B'));
+  assert.equal(h.events.some(e => e.startsWith('auth:delete:')), false);
 });
