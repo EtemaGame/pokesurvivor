@@ -110,14 +110,14 @@ test('ten-pull pity guarantees at least one Champion',async({page})=>{
  expect(result).toEqual({ok:true,champions:1,points:10,tickets:0});
 });
 
-test('runner is faster and tank has more health',async({page})=>{
+test('Patamon is faster and Greymon has more health',async({page})=>{
  await page.getByRole('button',{name:'Combate'}).click();
  await page.getByRole('button',{name:'Nueva partida'}).click();
  const outcome=await page.evaluate(()=>{
   run.spawn=999;run.shot=999;run.time=40;run.player={x:400,y:240};
   run.enemies=[
-   {uid:1,x:100,y:240,hp:10,boss:false,type:'runner',slowUntil:0},
-   {uid:2,x:100,y:240,hp:30,boss:false,type:'tank',slowUntil:0}
+   {uid:1,x:100,y:240,hp:10,boss:false,type:'runner',speciesId:'patamon',slowUntil:0},
+   {uid:2,x:100,y:240,hp:30,boss:false,type:'tank',speciesId:'greymon',slowUntil:0}
   ];
   update(.05);
   return {runnerX:run.enemies[0].x,tankX:run.enemies[1].x,tankHp:run.enemies[1].hp,runnerHp:run.enemies[0].hp};
@@ -140,4 +140,19 @@ test('enemies are Digimon and boss is a Mega Digimon',async({page})=>{
  expect(outcome.enemyStage).toBe('Rookie');
  expect(outcome.bossId).toBeTruthy();
  expect(outcome.bossStage).toBe('Mega');
+});
+
+test('enemy contact damage depends on Digimon species',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const damages=await page.evaluate(()=>{
+  const values=[];
+  for(const id of ['patamon','greymon']){
+   run.player={x:400,y:240};run.hp=100;run.hit=0;run.spawn=999;run.shot=999;
+   run.enemies=[{uid:99,x:400,y:240,hp:20,boss:false,speciesId:id,slowUntil:0}];
+   update(.016);values.push(100-run.hp);
+  }
+  return values;
+ });
+ expect(damages[1]).toBeGreaterThan(damages[0]);
 });
