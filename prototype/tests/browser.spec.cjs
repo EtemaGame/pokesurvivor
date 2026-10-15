@@ -66,3 +66,46 @@ test('permanent upgrades persist after reload',async({page})=>{
  await expect(page.getByText('Nivel 1/5')).toBeVisible();
  await expect(page.locator('#wallet')).toContainText('DigiCoins 80');
 });
+
+test('elemental attacks work in actual browser runtime',async({page})=>{
+ const result=await page.evaluate(()=>{
+  const ice=DigimonCombat.projectile('Ice',24,0,0,0);
+  const foe={uid:101,hp:20,slowUntil:0};
+  DigimonCombat.applyHit(ice,foe);
+  const electric=DigimonCombat.projectile('Electric',24,0,0,0);
+  const a={uid:102,hp:20},b={uid:103,hp:20};
+  DigimonCombat.applyHit(electric,a);
+  const afterFirst=electric.ttl;
+  DigimonCombat.applyHit(electric,b);
+  return {slow:foe.slowUntil,firstPierces:afterFirst>0,secondStops:electric.ttl===0};
+ });
+ expect(result.slow).toBeGreaterThan(0);
+ expect(result.firstPierces).toBe(true);
+ expect(result.secondStops).toBe(true);
+});
+test('boss victory rewards persist without waiting 90 seconds',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const before=await page.evaluate(()=>({tickets:data.tickets,coins:data.coins}));
+ await page.evaluate(()=>{
+  run.time=65;run.kills=30;run.boss=true;
+  run.enemies=[{uid:1,x:500,y:200,hp:0,boss:true,maxHp:55,slowUntil:0}];
+  run.spawn=100;run.shot=100;
+  update(0.016);
+ });
+ const state=await page.evaluate(()=>({ended:run.ended,tickets:data.tickets,coins:data.coins,runs:data.runs}));
+ expect(state.ended).toBe(true);
+ expect(state.tickets).toBeGreaterThan(before.tickets);
+ expect(state.coins).toBeGreaterThan(before.coins);
+ await page.reload();
+ const saved=await page.evaluate(()=>({tickets:data.tickets,coins:data.coins,runs:data.runs}));
+ expect(saved).toEqual({tickets:state.tickets,coins:state.coins,runs:state.runs});
+});
+test('ten-pull pity guarantees at least one Champion',async({page})=>{
+ const result=await page.evaluate(()=>{
+  const state={tickets:10,coins:0,owned:['agumon'],pity:{General:0},points:{}};
+  const outcome=DigimonGacha.draw(state,{species:SPECIES,stages:STAGES,weights:WEIGHTS,duplicates:DUP},'General',10,()=>0);
+  return {ok:outcome.ok,champions:outcome.results.filter(s=>STAGES.indexOf(s.stage)>=1).length,points:outcome.state.points.General,tickets:outcome.state.tickets};
+ });
+ expect(result).toEqual({ok:true,champions:1,points:10,tickets:0});
+});
