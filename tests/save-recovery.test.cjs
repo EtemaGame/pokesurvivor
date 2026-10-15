@@ -271,3 +271,38 @@ test('al reabrir, una copia local offline con gasto concurrente no se pisa al de
   assert.equal(cloud.get(UID).save.pupg[1].def, 0, 'nube no modificada');
   assert.equal(reopening.writes.length, 0);
 });
+
+test('un Pokémon obtenido en un dispositivo no restaura monedas gastadas en el otro', async () => {
+  const base = save('Jugador', Date.now() - 10000, 500);
+  const cloud = new Map([[UID, { save: base, v: 3 }]]);
+  const a = device({ cloud }), b = device({ cloud });
+  assert.equal(await a.db.ready(), true); assert.equal(await b.db.ready(), true);
+  a.db.save.coins = 400;
+  a.db.commit(true);
+  await a.db.flush(); await a.settled();
+  // El reloj de B es más reciente, aunque B no ha tocado las monedas.
+  b.db.save.owned[25] = { at: 123, from: 'wild' };
+  b.db.save.updated = cloud.get(UID).save.updated + 100;
+  b.db.commit(true);
+  await b.db.flush(); await b.settled();
+  assert.equal(b.db.syncState, 'ok', 'los cambios independientes deben fusionarse');
+  assert.equal(cloud.get(UID).save.coins, 400, 'no restaurar 100 monedas ya gastadas');
+  assert.ok(cloud.get(UID).save.owned[25]);
+});
+
+test('un gasto local no se revierte cuando otro dispositivo sólo obtuvo un Pokémon', async () => {
+  const base = save('Jugador', Date.now() - 10000, 500);
+  const cloud = new Map([[UID, { save: base, v: 3 }]]);
+  const a = device({ cloud }), b = device({ cloud });
+  assert.equal(await a.db.ready(), true); assert.equal(await b.db.ready(), true);
+  a.db.save.owned[7] = { at: 222, from: 'wild' };
+  a.db.save.updated += 100000;
+  a.db.commit(true);
+  await a.db.flush(); await a.settled();
+  b.db.save.coins = 350;
+  b.db.commit(true);
+  await b.db.flush(); await b.settled();
+  assert.equal(b.db.syncState, 'ok', 'no hubo gastos paralelos');
+  assert.equal(cloud.get(UID).save.coins, 350, 'no revertir el gasto por un reloj ajeno');
+  assert.ok(cloud.get(UID).save.owned[7]);
+});
