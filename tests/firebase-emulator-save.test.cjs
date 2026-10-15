@@ -35,7 +35,7 @@ function fields(coins) {
   };
 }
 const root = '/v1/projects/' + PROJECT + '/databases/(default)/documents';
-async function write(user, targetUid, coins, banned = undefined) {
+async function write(user, targetUid, coins, banned = undefined, expectedUpdateTime = undefined) {
   const entries = {
     save: { mapValue: { fields: fields(coins) } },
     v: { integerValue: '3' }
@@ -46,7 +46,8 @@ async function write(user, targetUid, coins, banned = undefined) {
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + user.token },
     body: JSON.stringify({ writes: [{
       update: { name: 'projects/' + PROJECT + '/databases/(default)/documents/saves/' + targetUid, fields: entries },
-      updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }]
+      updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
+      ...(expectedUpdateTime ? { currentDocument: { updateTime: expectedUpdateTime } } : {})
     }] })
   });
 }
@@ -74,4 +75,24 @@ test('emuladores Auth + Firestore: separación de dos usuarios y preservación d
   assert.equal(Number((await read(a, a.uid)).value.fields.save.mapValue.fields.coins.integerValue), 350);
   const unauthorizedBan = await write(a, a.uid, 350, true);
   assert.equal(unauthorizedBan.status, 403, 'el propietario no puede autoestablecer un baneo');
+});
+
+test('emulador Firestore: dos escrituras con misma revisión no pueden confirmar ambas', {
+  skip: !enabled ? 'requiere emuladores y proyecto demo-pokesurvivor' : false, timeout: 60000
+}, async () => {
+  const user = await signUp('simultaneous');
+  assert.equal((await write(user, user.uid, 500)).status, 200);
+  const base = await read(user, user.uid);
+  assert.equal(base.status, 200);
+  assert.ok(base.value.updateTime);
+  const [first, second] = await Promise.all([
+    write(user, user.uid, 400, undefined, base.value.updateTime),
+    write(user, user.uid, 350, undefined, base.value.updateTime)
+  ]);
+  const statuses = [first.status, second.status].sort();
+  assert.equal(statuses.filter(n => n === 200).length, 1, 'sólo una actualización coincide con la revisión');
+  assert.equal(statuses.filter(n => n !== 200).length, 1, 'la segunda debe fallar al cambiar la nube');
+  const result = await read(user, user.uid);
+  assert.equal(result.status, 200);
+  assert.ok([350, 400].includes(Number(result.value.fields.save.mapValue.fields.coins.integerValue)));
 });
