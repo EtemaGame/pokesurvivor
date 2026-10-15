@@ -57,8 +57,32 @@ G.Audio = (() => {
     return true;
   }
 
+  // Al minimizar la PWA, el contexto de audio debe dejar de consumir batería.
+  // pagehide cubre también las páginas que se guardan en la caché de navegación.
+  let pageHidden = false;
+  const backgrounded = () => pageHidden || document.hidden;
+
+  function resumeForeground() {
+    if (!ctx || backgrounded() || ctx.state === 'running') return;
+    // Algunos navegadores requieren otro gesto; unlock() lo reintenta.
+    ctx.resume().catch(() => {});
+  }
+
+  function suspendBackground() {
+    if (!ctx || ctx.state !== 'running') return;
+    // Evita quedarse suspendido al alternar rápidamente entre aplicaciones.
+    ctx.suspend().then(resumeForeground).catch(() => {});
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (backgrounded()) suspendBackground();
+    else resumeForeground();
+  });
+  addEventListener('pagehide', () => { pageHidden = true; suspendBackground(); });
+  addEventListener('pageshow', () => { pageHidden = false; resumeForeground(); });
+
   function unlock() {
-    if (!init()) return;
+    if (backgrounded() || !init()) return;
     // 'suspended' o 'interrupted' (iPhone al volver de otra app): se reanuda.
     if (ctx.state !== 'running') ctx.resume().catch(() => {});
     if (wanted && !current) startSong(wanted);
