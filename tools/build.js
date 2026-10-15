@@ -52,10 +52,14 @@ if (!EXPOSE) {
     '--unicode-escape-sequence', 'false', '--target', 'browser'], { stdio: 'inherit', shell });
 }
 const min = fs.readFileSync(outJs);
-const hash = crypto.createHash('sha1').update(min).digest('hex').slice(0, 10);
+// La revisión incluye el JS, el CSS y el HTML fuente: cualquier cambio visual
+// también provoca nueva URL y actualización del juego en navegador/PWA.
+const css = fs.readFileSync(path.join(ROOT, 'css', 'style.css'));
+const hash = crypto.createHash('sha256').update(min).update(css).update(dev).digest('hex').slice(0, 12);
 
 let html = dev.slice(0, i) + `<script defer src="js/app.min.js?v=${hash}"></script>` + dev.slice(j + END.length);
 html = html.replace(/<meta name="robots" content="noindex">\s*/, '');
+html = html.replace('href="css/style.css"', `href="css/style.css?v=${hash}"`);
 // --sin-seo: sin canonical/redes/datos estructurados ni enlaces a las páginas
 // (para publicar antes de tener el dominio pokesurvivor.com).
 const SIN_SEO = process.argv.includes('--sin-seo');
