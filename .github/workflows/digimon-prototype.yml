@@ -15,3 +15,6 @@ jobs:
         with:
           node-version: '22'
       - run: node --test prototype/tests/demo.test.cjs
+      - run: npm install --no-save --no-package-lock @playwright/test
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test prototype/tests/browser.spec.cjs --browser chromium --reporter=line
