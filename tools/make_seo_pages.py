@@ -571,6 +571,11 @@ def game_en():
     app = re.search(r'<script defer src="js/app\.min\.js\?v=[^"]+"></script>', idx).group(0)
     a, b = dev.index('<!-- scripts:begin -->'), dev.index('<!-- scripts:end -->') + len('<!-- scripts:end -->')
     src = dev[:a] + app + dev[b:]
+    # Mantener la misma revisión CSS que la portada española generada por build.js.
+    css = re.search(r'<link rel="stylesheet" href="css/style\.css\?v=[a-f0-9]+">', idx)
+    if not css:
+        raise RuntimeError('El HTML generado debe incluir una versión CSS')
+    src = src.replace('<link rel="stylesheet" href="css/style.css">', css.group(0))
     src = re.sub(r'<!-- seo:(begin|end) -->\n?', '', src)
     src = re.sub(r'<meta name="robots" content="noindex">\s*', '', src)
     src = re.sub(r'<!-- dev\.html: página fuente[^>]*-->\n?', '', src)
