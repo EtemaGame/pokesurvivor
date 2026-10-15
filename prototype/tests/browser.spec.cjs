@@ -180,3 +180,18 @@ test('ranged Digimon fire visible projectiles and keep distance',async({page})=>
  expect(result.shots).toBe(1);
  expect(result.x).toBeGreaterThan(550);
 });
+
+test('charging Digimon telegraphs before dashing',async({page})=>{
+ await page.getByRole('button',{name:'Combate'}).click();
+ await page.getByRole('button',{name:'Nueva partida'}).click();
+ const phases=await page.evaluate(()=>{
+  run.spawn=999;run.shot=999;run.player={x:400,y:240};
+  run.enemies=[{uid:555,x:250,y:240,hp:100,boss:false,type:'charger',speciesId:'agumon',slowUntil:0,phase:'walk',phaseTime:0,dashX:0,dashY:0}];
+  update(.016);const aim={phase:run.enemies[0].phase,x:run.enemies[0].x};
+  update(.56);const dash={phase:run.enemies[0].phase,x:run.enemies[0].x};
+  return {aim,dash};
+ });
+ expect(phases.aim.phase).toBe('aim');
+ expect(phases.dash.phase).toBe('dash');
+ expect(phases.dash.x).toBeGreaterThan(phases.aim.x);
+});
