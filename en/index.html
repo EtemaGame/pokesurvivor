@@ -73,7 +73,7 @@
   ]
 }
 </script>
-<link rel="stylesheet" href="css/style.css?v=77015d778654">
+<link rel="stylesheet" href="css/style.css?v=54e8e627efc3">
 </head>
 <body>
 
@@ -187,9 +187,38 @@
     </div>
     <div class="box" style="padding:14px 18px">
       <div id="menu-stats" style="font-size:14px;color:var(--muted)"></div>
+      <button id="menu-conflict" class="btn danger hidden" type="button" style="width:100%;margin-top:10px">Revisar conflicto de guardado</button>
+      <button id="menu-backup" class="btn small ghost hidden" type="button" style="width:100%;margin-top:8px">Descargar última copia de seguridad</button>
     </div>
   </div>
 </section>
+
+<!-- Resolución de conflictos de dos dispositivos: nunca escoger saldos automáticamente. -->
+<div id="save-conflict-overlay" class="save-conflict-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="save-conflict-title">
+  <div class="box save-conflict-box" tabindex="-1">
+    <div class="row between">
+      <h2 id="save-conflict-title">Dos partidas diferentes</h2>
+      <button id="save-conflict-later" class="btn small ghost" type="button">Decidir después</button>
+    </div>
+    <p>Dos dispositivos modificaron monedas, tickets o mejoras sin sincronizarse. Para evitar duplicar compras, el juego <b>ha detenido la subida</b>. Ambas versiones siguen separadas.</p>
+    <p class="note">Elige una partida completa. Los Pokémon y mejoras exclusivos de la otra NO se combinan automáticamente. Podrás conservar una copia de seguridad para revisarlos después.</p>
+    <div id="save-conflict-status" class="note" role="status" aria-live="polite"></div>
+    <div class="save-conflict-grid">
+      <div class="save-conflict-card"><h3>Este dispositivo</h3><div id="save-conflict-local">Cargando…</div></div>
+      <div class="save-conflict-card"><h3>En la nube</h3><div id="save-conflict-cloud">Cargando…</div></div>
+    </div>
+    <div class="row save-conflict-actions">
+      <button id="save-conflict-download" class="btn gold" type="button" disabled>1. Descargar ambas copias (.json)</button>
+      <button id="save-conflict-refresh" class="btn ghost" type="button">Actualizar comparación</button>
+    </div>
+    <label class="save-conflict-ack"><input id="save-conflict-ack" type="checkbox" disabled> Entiendo que debo elegir una versión completa; la otra quedará en la copia descargada y en este navegador.</label>
+    <div class="row save-conflict-actions">
+      <button id="save-conflict-use-cloud" class="btn" type="button" disabled>Usar la partida de la nube</button>
+      <button id="save-conflict-use-local" class="btn danger" type="button" disabled>Sustituir la nube por este dispositivo</button>
+    </div>
+    <p class="note">Si otro dispositivo cambia la nube durante la elección, esta operación se cancelará y tendrás que revisarla de nuevo. No cierres el navegador hasta terminar.</p>
+  </div>
+</div>
 
 <div id="topbar" class="topbar hidden">
   <div class="pill"><span class="coin"></span><span id="coins">0</span></div>
@@ -554,6 +583,6 @@
 </section>
 
 <!-- datos generados -->
-<script defer src="js/app.min.js?v=77015d778654"></script>
+<script defer src="js/app.min.js?v=54e8e627efc3"></script>
 </body>
 </html>
