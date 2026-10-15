@@ -161,6 +161,12 @@ G.SaveConflictUI = (() => {
     G.DB.onSync(s => {
       refreshMenuButtons();
       if (s === 'conflict' && G.UI.isOpen('scr-menu') && !prompted) showIfNeeded();
+      if (s !== 'conflict') {
+        prompted = false;
+        // Al cambiar de cuenta o cerrar sesión, nunca dejar la pantalla
+        // del usuario anterior abierta sobre el formulario de acceso.
+        if (!busy && !modal().classList.contains('hidden')) close();
+      }
     });
   }
   return { init, open, showIfNeeded, refreshMenuButtons, downloadLast };
