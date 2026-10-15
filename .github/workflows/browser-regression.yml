@@ -28,6 +28,10 @@ jobs:
       - run: node --test tests/save-integrity.test.cjs
       - run: node --test tests/account-session.test.cjs
       - run: node --test tests/save-recovery.test.cjs
+      - name: Test Firebase Auth and Firestore emulators (demo project)
+        env:
+          GCLOUD_PROJECT: demo-pokesurvivor
+        run: npx --yes firebase-tools@14.12.0 emulators:exec --project demo-pokesurvivor --only auth,firestore --non-interactive "node --test tests/firebase-emulator-save.test.cjs"
       - run: node --test tests/browser-chromium.test.cjs
       - name: Commit generated browser preview (fork branch only)
         run: |
