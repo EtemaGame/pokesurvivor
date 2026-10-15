@@ -21,7 +21,7 @@ La comparación de SHA de los archivos entre `JPTER78/main` y la rama experiment
 
 ### Precisión sobre los «relojes»
 
-El parche del 14-10 corrige el desfase en **amigos e invitaciones** mediante `G.Social.now()`. El archivo original `js/core/db.js` aún asigna `updated = Date.now()` y `merge(a,b)` escoge el saldo monetario/compañero/pity del guardado con mayor `updated`. Es un **riesgo de diseño a probar con dos relojes distintos**, no una pérdida de cuenta demostrada. No decir que el parche social arregló o dejó de arreglar el reloj de las partidas sin prueba específica.
+El parche del 14-10 corrige el desfase en **amigos e invitaciones** mediante la función interna `now()` de `js/net/social.js`. El archivo original `js/core/db.js` aún asigna `updated = Date.now()` y `merge(a,b)` escoge el saldo monetario/compañero/pity del guardado con mayor `updated`. Es un **riesgo de diseño a probar con dos relojes distintos**, no una pérdida de cuenta demostrada. No decir que el parche social arregló o dejó de arreglar el reloj de las partidas sin prueba específica.
 
 ## 2. Diferencias propias: valor real, grado de evidencia y cautelas
 
