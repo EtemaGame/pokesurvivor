@@ -315,6 +315,16 @@ G.DB = (() => {
   // pushNow() puede vencer a los 12 s, pero runTransaction continúa en Firebase.
   const inFlightTransactions = new Set();
   let deleting = false;
+  // Invalida callbacks de escrituras y lecturas iniciadas en otra sesión.
+  let sessionEpoch = 0;
+  function currentSession(epoch, accountUid) {
+    return sessionEpoch === epoch && uid === accountUid && !guest && !!save;
+  }
+  function resetSyncSession() {
+    clearTimeout(pushT); clearTimeout(retryT);
+    pushT = retryT = 0; pushDue = 0;
+    pushing = null; pending = false; lastPush = 0; fails = 0;
+  }
   // Como mucho una subida cada 30 min (con miles de jugadores, cada 5 min
   // eran decenas de miles de escrituras por hora); lo que cuesta algo
   // (gacha, mejoras), a los 30 s. La copia local se guarda siempre al momento (y se fusiona con la
@@ -404,22 +414,30 @@ G.DB = (() => {
     return (n || 'Entrenador').slice(0, 16);
   }
 
-  const docRef = () => fs.collection('saves').doc(uid);
+  const docRef = (accountUid = uid) => fs.collection('saves').doc(accountUid);
   const plain = s => JSON.parse(JSON.stringify(s));      // Firestore no admite undefined
 
   /** Abre la partida de la nube de un usuario recién autenticado. */
   async function openCloud(u, opts = {}) {
-    uid = u.uid;
+    // Abrir otra cuenta cancela solamente el estado local de sincronización.
+    // Las transacciones ya enviadas siguen perteneciendo a su UID original.
+    const epoch = ++sessionEpoch;
+    resetSyncSession();
+    uid = u.uid; key = null; save = null;
+    const accountUid = u.uid;
     if (G.Signups) G.Signups.report(u);          // tope de cuentas del mes (net/signups.js)
-    const cached = read(K_CLOUD + uid);
+    const cached = read(K_CLOUD + accountUid);
     let remote = null, online = true;
     try {
-      const snap = await docRef().get();
+      const snap = await docRef(accountUid).get();
       remote = snap.exists ? snap.data().save : null;
     } catch (e) {
       if (!cached) throw e;                // sin conexión y sin copia: no hay nada que abrir
       online = false;
     }
+    // Otra autenticación puede haber terminado mientras Firestore respondía.
+    if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
+      throw { code: 'save/session-changed' };
     let s = merge(cached && migrate(cached), remote && migrate(remote));
     if (!s) s = newSave(opts.name || displayNameOf(u));
     if (opts.legacy) {
@@ -427,8 +445,8 @@ G.DB = (() => {
       write(K_MIGRATED + opts.legacy.key, uid);
     }
     save = migrate(s, s.name);
-    key = uid; user = save.name; guest = false;
-    write(K_CLOUD + uid, save);
+    key = accountUid; user = save.name; guest = false;
+    write(K_CLOUD + accountUid, save);
     // Sólo se sube si hay algo que la nube no tenga (cuenta nueva, progreso de
     // este ordenador sin subir...), y SIN esperar: antes el menú no salía hasta
     // terminar la subida, y con Firebase lento se tardaba hasta 9 s en entrar.
@@ -454,32 +472,39 @@ G.DB = (() => {
    * Nunca se sube dos veces en menos de 65 s; mientras, todo está en el navegador.
    */
   const K_OK = 'ps.cloudok.', MIN_GAP = 65000;
-  const sinceOk = () => Date.now() - (+read(K_OK + uid) || 0);
+  const sinceOk = accountUid => Date.now() - (+read(K_OK + accountUid) || 0);
 
   /** Sube la partida fusionándola con lo que haya en la nube (transacción). */
   function pushNow() {
     if (deleting || mode !== 'cloud' || guest || !save || !uid) return Promise.resolve();
     // Si ya hay una subida en marcha, se hace otra justo después (para lo que haya cambiado mientras).
-    if (pushing) { pending = true; return pushing.then(() => (pending ? pushNow() : undefined)); }
+    const epoch = sessionEpoch, accountUid = uid;
+    if (pushing) {
+      pending = true;
+      return pushing.then(() => (currentSession(epoch, accountUid) && pending ? pushNow() : undefined));
+    }
     clearTimeout(pushT); pushT = 0; pushDue = 0;
     if (navigator.onLine === false) {
       pending = true; setSync('offline'); scheduleRetry();
       return Promise.resolve();
     }
-    if (sinceOk() < MIN_GAP) {
+    if (sinceOk(accountUid) < MIN_GAP) {
       pending = true; setSync('pending');
-      schedulePush(MIN_GAP - sinceOk() + 500);
+      schedulePush(MIN_GAP - sinceOk(accountUid) + 500);
       return Promise.resolve();
     }
     pending = false;
     lastPush = Date.now();
     setSync('syncing');
     let merged = null;
+    const ref = docRef(accountUid);
+    const initialSave = plain(save);
     const tr = fs.runTransaction(async tx => {
-      const ref = docRef();
       const snap = await tx.get(ref);
       const remote = snap.exists ? migrate(snap.data().save) : null;
-      merged = remote ? merge(plain(save), remote) : plain(save);
+      // Nunca leer una partida ajena si el usuario cambia durante tx.get().
+      const source = currentSession(epoch, accountUid) ? plain(save) : initialSave;
+      merged = remote ? merge(source, remote) : source;
       const doc = { save: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), v: VERSION };
       if (snap.exists && snap.data().ban === true) doc.ban = true;
       tx.set(ref, doc);
@@ -492,35 +517,43 @@ G.DB = (() => {
     // Si la red se cae a medias, Firestore puede quedarse esperando: tope de 12 s.
     const timeout = new Promise((_, rej) => setTimeout(() => rej({ code: 'unavailable' }), 12000));
     let failed = false;
-    pushing = Promise.race([tr, timeout]).then(() => {
+    const work = Promise.race([tr, timeout]).then(() => {
+      if (!currentSession(epoch, accountUid)) return;
       fails = 0;
-      write(K_OK + uid, Date.now());
+      write(K_OK + accountUid, Date.now());
       // Se FUSIONA con lo de ahora (no se sobrescribe): si has cambiado algo
       // mientras se subía (elegir compañero, una compra...), no se pierde.
-      if (merged && save) { applyInPlace(merge(plain(save), merged)); write(K_CLOUD + uid, save); }
+      if (merged) { applyInPlace(merge(plain(save), merged)); write(K_CLOUD + accountUid, save); }
       setSync(pending ? 'pending' : 'ok');
       if (G.UI && G.UI.refreshCoins) G.UI.refreshCoins();
     }).catch(e => {
+      if (!currentSession(epoch, accountUid)) return;
       console.warn('[DB] no se pudo sincronizar:', e.code || e.message);
       pending = true; failed = true;
       setSync(navigator.onLine === false || e.code === 'unavailable' ? 'offline' : 'pending');
       scheduleRetry();
     }).finally(() => {
+      if (!currentSession(epoch, accountUid)) return;
       pushing = null;
       // (Si ha fallado, el reintento ya está programado con su espera creciente.)
       if (!failed && pending && syncState === 'pending') schedulePush(Math.max(1500, PUSH_GAP - (Date.now() - lastPush)));
     });
-    return pushing;
+    pushing = work;
+    return work;
   }
 
   // Si ya había una subida programada antes, se respeta (una compra no espera a la siguiente partida).
   let pushDue = 0;
   function schedulePush(ms) {
     if (deleting) return;
+    const epoch = sessionEpoch, accountUid = uid;
     const due = Date.now() + ms;
     if (pushT && pushDue && pushDue <= due) return;
     clearTimeout(pushT); pushDue = due;
-    pushT = setTimeout(() => { pushT = 0; pushDue = 0; pushNow(); }, ms);
+    pushT = setTimeout(() => {
+      if (!currentSession(epoch, accountUid)) return;
+      pushT = 0; pushDue = 0; pushNow();
+    }, ms);
   }
   /**
    * Reintento con espera creciente: 15 s, 30 s, 1 min, 2 min... hasta 10 min.
@@ -530,10 +563,13 @@ G.DB = (() => {
   let fails = 0;
   function scheduleRetry() {
     if (deleting) return;
+    const epoch = sessionEpoch, accountUid = uid;
     const ms = Math.min(10 * 60e3, 15e3 * Math.pow(2, fails)) * (0.8 + Math.random() * 0.4);
     fails = Math.min(fails + 1, 8);
     clearTimeout(retryT);
-    retryT = setTimeout(() => { if (pending) pushNow(); }, ms);
+    retryT = setTimeout(() => {
+      if (currentSession(epoch, accountUid) && pending) pushNow();
+    }, ms);
   }
 
   function authError(e) {
@@ -555,7 +591,8 @@ G.DB = (() => {
       'auth/requires-recent-login': 'Por seguridad, vuelve a iniciar sesión y repite la operación.',
       'permission-denied': 'La base de datos rechazó el acceso (revisa las reglas de Firestore).',
       'unavailable': 'Sin conexión con la base de datos.',
-      'save/delete-pending': 'Hay un guardado en curso. Espera a que termine antes de borrar la cuenta.'
+      'save/delete-pending': 'Hay un guardado en curso. Espera a que termine antes de borrar la cuenta.',
+      'save/session-changed': 'La sesión cambió mientras se cargaba la partida. Intenta entrar de nuevo.'
     };
     if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return '';
     // El "portero" de Firebase (functions/index.js) ha rechazado la cuenta nueva: tope del mes.
@@ -637,6 +674,7 @@ G.DB = (() => {
   }
 
   function playAsGuest() {
+    ++sessionEpoch; resetSyncSession();
     user = 'Invitado'; key = null; guest = true; uid = null;
     save = newSave('Invitado');
     if (mode === 'local') remove(K_SES);
@@ -665,17 +703,27 @@ G.DB = (() => {
   const leaveHooks = [];
 
   async function logout() {
-    for (const fn of leaveHooks) { try { await fn('logout'); } catch (e) { /* nada */ } }
+    const epoch = sessionEpoch, accountUid = uid;
+    // La copia local debe quedar persistida incluso si Firebase tarda o falla.
+    if (mode === 'cloud' && !guest && save && accountUid)
+      write(K_CLOUD + accountUid, save);
+    for (const fn of leaveHooks) {
+      try { await fn('logout'); } catch (e) { /* nada */ }
+      if (epoch !== sessionEpoch) return;
+    }
     if (mode === 'cloud' && !guest && save) {
       if (pending) { try { await pushNow(); } catch (e) { /* queda la copia local */ } }
+      if (epoch !== sessionEpoch) return; // otra cuenta entró durante el guardado
       stopListening();
       try { await auth.signOut(); } catch (e) { /* nada */ }
     } else if (mode === 'local' && !guest) {
       commit();
       remove(K_SES);
     }
-    clearTimeout(pushT); clearTimeout(retryT);
-    user = key = save = uid = null; guest = false; pending = false;
+    if (epoch !== sessionEpoch) return;
+    ++sessionEpoch;
+    resetSyncSession();
+    user = key = save = uid = null; guest = false;
     setSync(mode === 'cloud' ? 'ok' : 'local');
   }
 
