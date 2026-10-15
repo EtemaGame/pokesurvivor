@@ -36,7 +36,7 @@ function harness({ transactionTimeout = false, delayedRead = false } = {}) {
       return () => {};
     },
     async signInWithEmailAndPassword(email) {
-      this.currentUser = accounts[email.includes('42657461') ? 'b' : 'a'];
+      this.currentUser = accounts[email.includes('62657461') ? 'b' : 'a'];
       events.push('login:' + this.currentUser.uid);
       return { user: this.currentUser };
     },
@@ -200,6 +200,7 @@ test('una lectura A tardía no puede sobrescribir el login B', async () => {
   const h = harness({ delayedRead: true });
   assert.equal(await h.DB.ready(), true);
   h.delayNextARead();
+  h.events.length = 0;
   const loginA = h.DB.login('Alfa', 'secret');
   await untilEvent(h.events, 'read:uid-A');
   const resultB = await h.DB.login('Beta', 'secret');
