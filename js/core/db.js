@@ -26,7 +26,7 @@
  */
 G.DB = (() => {
   const K_ACC = 'ps.accounts', K_SES = 'ps.session', K_SAVE = 'ps.save.';
-  const K_CLOUD = 'ps.cloud.', K_MIGRATED = 'ps.migrated.';
+  const K_CLOUD = 'ps.cloud.', K_MIGRATED = 'ps.migrated.', K_BASE = 'ps.cloudbase.';
   const VERSION = 3;
   const START_COINS = 500;
   const SDK = 'https://www.gstatic.com/firebasejs/13.0.0/';
@@ -317,6 +317,10 @@ G.DB = (() => {
   let deleting = false;
   // Invalida callbacks de escrituras y lecturas iniciadas en otra sesión.
   let sessionEpoch = 0;
+  // Último saldo ECONÓMICO leído/confirmado en Firebase, separado de la copia
+  // local. Hace posible detectar dos gastos divergentes sin sumar monedas o
+  // aceptar gratis dos compras. Se guarda también para inicios offline.
+  let observedRemote = null, syncBlocked = false;
   function currentSession(epoch, accountUid) {
     return sessionEpoch === epoch && uid === accountUid && !guest && !!save;
   }
@@ -324,6 +328,7 @@ G.DB = (() => {
     clearTimeout(pushT); clearTimeout(retryT);
     pushT = retryT = 0; pushDue = 0;
     pushing = null; pending = false; lastPush = 0; fails = 0;
+    observedRemote = null; syncBlocked = false;
   }
   // Como mucho una subida cada 30 min (con miles de jugadores, cada 5 min
   // eran decenas de miles de escrituras por hora); lo que cuesta algo
@@ -453,6 +458,56 @@ G.DB = (() => {
       (cloud.partner == null && combined.partner != null);
   }
 
+
+  /**
+   * El inventario coleccionable se fusiona con unión/máximo, pero los saldos
+   * gastables y upgrades comprados tienen causalidad: con dos compras offline
+   * de 100 monedas desde el mismo saldo 500, merge() devolvería dos mejoras
+   * y sólo un pago (400). Conservar AMBAS copias, sin subir nada, es más seguro
+   * que adivinar un saldo o duplicar tickets.
+   */
+  function economySnapshot(s) {
+    if (!s || !isObj(s)) return null;
+    return {
+      coins: s.coins,
+      tickets: plain(s.tickets || {}),
+      pity: plain(s.pity || {}),
+      upgrades: plain(s.upgrades || {}),
+      pupg: plain(s.pupg || {})
+    };
+  }
+  function concurrentEconomyChanges(base, local, remote) {
+    if (!base || !local || !remote) return false;
+    const l = economySnapshot(local), r = economySnapshot(remote);
+    if (!l || !r) return false;
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const overlap = (a, b, c) => !same(a, b) && !same(a, c);
+    if (overlap(base.coins, l.coins, r.coins)) return true;
+    for (const group of ['tickets', 'pity', 'upgrades']) {
+      const a = base[group] || {}, b = l[group] || {}, c = r[group] || {};
+      const keys = new Set([...Object.keys(a), ...Object.keys(b), ...Object.keys(c)]);
+      for (const k of keys) if (overlap(a[k], b[k], c[k])) return true;
+    }
+    const aa = base.pupg || {}, bb = l.pupg || {}, cc = r.pupg || {};
+    const dexes = new Set([...Object.keys(aa), ...Object.keys(bb), ...Object.keys(cc)]);
+    for (const dex of dexes) {
+      const a = aa[dex] || {}, b = bb[dex] || {}, c = cc[dex] || {};
+      const ids = new Set([...Object.keys(a), ...Object.keys(b), ...Object.keys(c)]);
+      for (const id of ids) if (overlap(a[id], b[id], c[id])) return true;
+    }
+    return false;
+  }
+  const CONFLICT_MSG = 'Conflicto entre dispositivos: tu progreso sigue en este navegador, pero no se enviará a la nube para evitar perder compras. No borres los datos del navegador.';
+  function blockConcurrentSync(accountUid) {
+    syncBlocked = true; pending = false;
+    clearTimeout(pushT); clearTimeout(retryT);
+    pushT = retryT = pushDue = 0;
+    setSync('conflict');
+    if (G.UI && G.UI.refreshCoins) G.UI.refreshCoins();
+    if (G.UI && G.UI.toast) G.UI.toast(CONFLICT_MSG, 12000);
+    console.warn('[DB]', CONFLICT_MSG, accountUid);
+  }
+
   // Si existe el documento pero no una partida reconocible, NO crear y subir
   // silenciosamente una partida nueva encima de datos potencialmente recuperables.
   function validCloudSave(s) {
@@ -470,6 +525,7 @@ G.DB = (() => {
     const accountUid = u.uid;
     if (G.Signups) G.Signups.report(u);          // tope de cuentas del mes (net/signups.js)
     const cached = read(K_CLOUD + accountUid);
+    observedRemote = read(K_BASE + accountUid);
     let remote = null, online = true;
     try {
       const snap = await docRef(accountUid).get();
@@ -484,8 +540,22 @@ G.DB = (() => {
     // Otra autenticación puede haber terminado mientras Firestore respondía.
     if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
       throw { code: 'save/session-changed' };
+    // NO fusionar dos gastos del mismo saldo base al volver de estar offline:
+    // el cliente conserva su partida local, y la nube sigue intacta. La última
+    // lectura conocida debe haberse guardado antes de abrir el modo offline.
+    if (online && observedRemote && cached && remote &&
+        concurrentEconomyChanges(observedRemote, cached, remote)) {
+      save = migrate(cached, cached.name); key = accountUid; user = save.name;
+      blockConcurrentSync(accountUid);
+      return;
+    }
     const localSave = cached && isObj(cached) ? migrate(cached) : null;
     const cloudSave = remote && migrate(remote);
+    // Sólo avanzar la base después de descartar un conflicto.
+    if (online && cloudSave) {
+      observedRemote = economySnapshot(cloudSave);
+      write(K_BASE + accountUid, observedRemote);
+    }
     let s = merge(localSave, cloudSave);
     if (!s) s = newSave(opts.name || displayNameOf(u));
     const restored = !!(cloudSave && recoveredProgress(cloudSave, s));
@@ -526,7 +596,7 @@ G.DB = (() => {
 
   /** Sube la partida fusionándola con lo que haya en la nube (transacción). */
   function pushNow() {
-    if (deleting || mode !== 'cloud' || guest || !save || !uid) return Promise.resolve();
+    if (deleting || syncBlocked || mode !== 'cloud' || guest || !save || !uid) return Promise.resolve();
     // Si ya hay una subida en marcha, se hace otra justo después (para lo que haya cambiado mientras).
     const epoch = sessionEpoch, accountUid = uid;
     if (pushing) {
@@ -554,6 +624,8 @@ G.DB = (() => {
       const remote = snap.exists ? migrate(snap.data().save) : null;
       // Nunca leer una partida ajena si el usuario cambia durante tx.get().
       const source = currentSession(epoch, accountUid) ? plain(save) : initialSave;
+      if (remote && concurrentEconomyChanges(observedRemote, source, remote))
+        throw { code: 'save/merge-conflict' };
       merged = remote ? merge(source, remote) : source;
       const doc = { save: merged, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), v: VERSION };
       if (snap.exists && snap.data().ban === true) doc.ban = true;
@@ -571,6 +643,8 @@ G.DB = (() => {
       if (!currentSession(epoch, accountUid)) return;
       fails = 0;
       write(K_OK + accountUid, Date.now());
+      observedRemote = economySnapshot(merged);
+      write(K_BASE + accountUid, observedRemote);
       // Se FUSIONA con lo de ahora (no se sobrescribe): si has cambiado algo
       // mientras se subía (elegir compañero, una compra...), no se pierde.
       if (merged) { applyInPlace(merge(plain(save), merged)); write(K_CLOUD + accountUid, save); }
@@ -578,6 +652,10 @@ G.DB = (() => {
       if (G.UI && G.UI.refreshCoins) G.UI.refreshCoins();
     }).catch(e => {
       if (!currentSession(epoch, accountUid)) return;
+      if (e && e.code === 'save/merge-conflict') {
+        failed = true; blockConcurrentSync(accountUid);
+        return;
+      }
       console.warn('[DB] no se pudo sincronizar:', e.code || e.message);
       pending = true; failed = true;
       setSync(navigator.onLine === false || e.code === 'unavailable' ? 'offline' : 'pending');
@@ -747,6 +825,7 @@ G.DB = (() => {
     save.updated = Math.max(Date.now(), (Number.isFinite(previous) ? previous : 0) + 1);
     if (mode === 'local') return write(K_SAVE + key, save);
     write(K_CLOUD + uid, save);
+    if (syncBlocked) { setSync('conflict'); return true; }
     pending = true;
     setSync('pending');
     const gap = urgent === 'run' ? PUSH_GAP_RUN : urgent ? PUSH_GAP_URGENT : PUSH_GAP;
