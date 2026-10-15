@@ -653,7 +653,7 @@ G.DB = (() => {
     pending = false;
     lastPush = Date.now();
     setSync('syncing');
-    let merged = null;
+    let merged = null, transactionSource = null;
     const ref = docRef(accountUid);
     const initialSave = plain(save);
     // Capturar la base junto al UID; otro login puede empezar antes de tx.get().
@@ -663,6 +663,9 @@ G.DB = (() => {
       const remote = snap.exists ? migrate(snap.data().save) : null;
       // Nunca leer una partida ajena si el usuario cambia durante tx.get().
       const source = currentSession(epoch, accountUid) ? plain(save) : initialSave;
+      // Guardar el punto causal antes de alinear saldos; el juego puede seguir
+      // modificando la partida mientras Firebase confirma esta transacción.
+      transactionSource = economySnapshot(source);
       if (remote && concurrentEconomyChanges(baseForWrite, source, remote))
         throw { code: 'save/merge-conflict' };
       if (remote && baseForWrite) alignIndependentEconomy(baseForWrite, source, remote);
@@ -682,12 +685,19 @@ G.DB = (() => {
     const work = Promise.race([tr, timeout]).then(() => {
       if (!currentSession(epoch, accountUid)) return;
       fails = 0;
+      // Cambios posteriores a tx.get(): no restaurar saldos que la transacción
+      // ya resolvió, pero tampoco aceptar gastos concurrentes sin conciliación.
+      const current = plain(save), confirmed = merged && plain(merged);
+      if (confirmed && concurrentEconomyChanges(transactionSource, current, confirmed)) {
+        write(K_CLOUD + accountUid, save);
+        blockConcurrentSync(accountUid);
+        return;
+      }
+      if (confirmed) alignIndependentEconomy(transactionSource, current, confirmed);
       write(K_OK + accountUid, Date.now());
       observedRemote = economySnapshot(merged);
       write(K_BASE + accountUid, observedRemote);
-      // Se FUSIONA con lo de ahora (no se sobrescribe): si has cambiado algo
-      // mientras se subía (elegir compañero, una compra...), no se pierde.
-      if (merged) { applyInPlace(merge(plain(save), merged)); write(K_CLOUD + accountUid, save); }
+      if (confirmed) { applyInPlace(merge(current, confirmed)); write(K_CLOUD + accountUid, save); }
       setSync(pending ? 'pending' : 'ok');
       if (G.UI && G.UI.refreshCoins) G.UI.refreshCoins();
     }).catch(e => {
