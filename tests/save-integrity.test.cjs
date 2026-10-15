@@ -114,7 +114,7 @@ function createHarness({ expireWait = false } = {}) {
   };
   vm.runInNewContext(SOURCE, context, { filename: 'js/core/db.js' });
   return {
-    DB: context.G.DB, events, unblock,
+    DB: context.G.DB, events, unblock, items,
     get remote() { return record; }
   };
 }
@@ -161,4 +161,18 @@ test('si una transacción no termina, se cancela el borrado sin perder la cuenta
   assert.equal(h.DB.loggedIn, true);
   h.unblock();
   await uploading;
+});
+
+test('borrar cuenta completa elimina todos los respaldos de conflicto de ese UID', async () => {
+  const h = createHarness();
+  assert.equal(await h.DB.ready(), true);
+  h.items.set('ps.conflictbackup.testuser123.100-a', JSON.stringify({ type: 'pokesurvivor-conflict-backup' }));
+  h.items.set('ps.conflictbackup.testuser123.200-b', JSON.stringify({ type: 'pokesurvivor-conflict-backup' }));
+  h.items.set('ps.conflictbackup.otheruser.777', JSON.stringify({ type: 'unrelated' }));
+  h.items.set('ps.cloudbase.testuser123', JSON.stringify({ coins: 500 }));
+  assert.equal((await h.DB.deleteAccount('secret')).ok, true);
+  assert.equal(h.items.has('ps.conflictbackup.testuser123.100-a'), false);
+  assert.equal(h.items.has('ps.conflictbackup.testuser123.200-b'), false);
+  assert.equal(h.items.has('ps.cloudbase.testuser123'), false);
+  assert.equal(h.items.has('ps.conflictbackup.otheruser.777'), true, 'no borrar respaldos de otro UID');
 });
