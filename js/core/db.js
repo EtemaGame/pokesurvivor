@@ -740,7 +740,11 @@ G.DB = (() => {
    */
   function commit(urgent = false) {
     if (guest || !key || !save) return false;
-    save.updated = Date.now();
+    // Reloj lógico por sesión: un gasto posterior a abrir una copia de la
+    // nube debe ser más reciente incluso si aquel dispositivo tenía la hora
+    // adelantada. No resuelve dos ediciones offline verdaderamente concurrentes.
+    const previous = +save.updated;
+    save.updated = Math.max(Date.now(), (Number.isFinite(previous) ? previous : 0) + 1);
     if (mode === 'local') return write(K_SAVE + key, save);
     write(K_CLOUD + uid, save);
     pending = true;
