@@ -417,6 +417,49 @@ G.DB = (() => {
   const docRef = (accountUid = uid) => fs.collection('saves').doc(accountUid);
   const plain = s => JSON.parse(JSON.stringify(s));      // Firestore no admite undefined
 
+  /**
+   * Comprueba si la unión recuperó logros que no estaban en la nube.
+   * No compara timestamps ni la partida entera: las migraciones añaden campos
+   * que no deben provocar una escritura Firestore en cada inicio de sesión.
+   * Monedas, tickets, compañero y pity siguen usando la versión más reciente;
+   * no se suman saldos (se duplicarían compras al jugar en dos dispositivos).
+   */
+  function recoveredProgress(cloud, combined) {
+    if (!cloud || !combined) return false;
+    for (const coll of ['owned', 'shiny', 'legends', 'arenas', 'itemsFound', 'evoMoves', 'ach']) {
+      const before = cloud[coll] || {}, after = combined[coll] || {};
+      for (const k of Object.keys(after)) if (!Object.prototype.hasOwnProperty.call(before, k)) return true;
+    }
+    for (const coll of ['upgrades', 'stats']) {
+      const before = cloud[coll] || {}, after = combined[coll] || {};
+      for (const k of Object.keys(after)) if ((+after[k] || 0) > (+before[k] || 0)) return true;
+    }
+    for (const dex of Object.keys(combined.pupg || {})) {
+      const before = (cloud.pupg || {})[dex] || {}, after = combined.pupg[dex] || {};
+      for (const id of Object.keys(after)) if ((+after[id] || 0) > (+before[id] || 0)) return true;
+    }
+    const oldMissions = cloud.missions || {}, newMissions = combined.missions || {};
+    for (const [period, list] of [['day', 'daily'], ['week', 'weekly']]) {
+      if (oldMissions[period] !== newMissions[period]) continue;
+      for (const [i, now] of (newMissions[list] || []).entries()) {
+        const old = (oldMissions[list] || [])[i];
+        if (!old || !now || old.id !== now.id) continue;
+        if ((now.prog || 0) > (old.prog || 0) || (now.claimed && !old.claimed) || (now.told && !old.told))
+          return true;
+      }
+    }
+    return (cloud.starter == null && combined.starter != null) ||
+      (cloud.personality == null && combined.personality != null) ||
+      (cloud.partner == null && combined.partner != null);
+  }
+
+  // Si existe el documento pero no una partida reconocible, NO crear y subir
+  // silenciosamente una partida nueva encima de datos potencialmente recuperables.
+  function validCloudSave(s) {
+    return isObj(s) && ['coins', 'owned', 'created', 'partner'].some(k => Object.prototype.hasOwnProperty.call(s, k));
+  }
+
+
   /** Abre la partida de la nube de un usuario recién autenticado. */
   async function openCloud(u, opts = {}) {
     // Abrir otra cuenta cancela solamente el estado local de sincronización.
@@ -430,16 +473,22 @@ G.DB = (() => {
     let remote = null, online = true;
     try {
       const snap = await docRef(accountUid).get();
+      if (snap.exists && !validCloudSave(snap.data() && snap.data().save))
+        throw { code: 'save/cloud-invalid' };
       remote = snap.exists ? snap.data().save : null;
     } catch (e) {
+      if (e && e.code === 'save/cloud-invalid') throw e;
       if (!cached) throw e;                // sin conexión y sin copia: no hay nada que abrir
       online = false;
     }
     // Otra autenticación puede haber terminado mientras Firestore respondía.
     if (sessionEpoch !== epoch || uid !== accountUid || auth.currentUser?.uid !== accountUid)
       throw { code: 'save/session-changed' };
-    let s = merge(cached && migrate(cached), remote && migrate(remote));
+    const localSave = cached && isObj(cached) ? migrate(cached) : null;
+    const cloudSave = remote && migrate(remote);
+    let s = merge(localSave, cloudSave);
     if (!s) s = newSave(opts.name || displayNameOf(u));
+    const restored = !!(cloudSave && recoveredProgress(cloudSave, s));
     if (opts.legacy) {
       s = merge(s, opts.legacy.save);
       write(K_MIGRATED + opts.legacy.key, uid);
@@ -452,7 +501,8 @@ G.DB = (() => {
     // terminar la subida, y con Firebase lento se tardaba hasta 9 s en entrar.
     // (Comparar el texto entero daba "distinto" casi siempre y se subía en cada
     // entrada: ahora sólo si esta copia es más nueva que la de la nube.)
-    const same = remote && !opts.legacy && (!cached || (cached.updated || 0) <= (remote.updated || 0));
+    const same = cloudSave && !opts.legacy && !restored &&
+      (!localSave || (localSave.updated || 0) <= (cloudSave.updated || 0));
     lastPush = Date.now();       // la primera compra o ticket no sube al momento: espera como las demás
     if (!online) { pending = true; setSync('offline'); scheduleRetry(); }
     else if (same) setSync('ok');
@@ -592,7 +642,8 @@ G.DB = (() => {
       'permission-denied': 'La base de datos rechazó el acceso (revisa las reglas de Firestore).',
       'unavailable': 'Sin conexión con la base de datos.',
       'save/delete-pending': 'Hay un guardado en curso. Espera a que termine antes de borrar la cuenta.',
-      'save/session-changed': 'La sesión cambió mientras se cargaba la partida. Intenta entrar de nuevo.'
+      'save/session-changed': 'La sesión cambió mientras se cargaba la partida. Intenta entrar de nuevo.',
+      'save/cloud-invalid': 'La partida guardada en la nube está incompleta. Por seguridad no se ha sobrescrito. Contacta con soporte antes de crear una partida nueva.'
     };
     if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return '';
     // El "portero" de Firebase (functions/index.js) ha rechazado la cuenta nueva: tope del mes.
