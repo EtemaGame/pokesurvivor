@@ -926,8 +926,7 @@ G.Flow = {
     if (G.Game.state !== 'ui') G.Game.toUI();
     G.Audio.music('village');
     G.MenuUI.open();
-    if (G.DB.syncState === 'conflict')
-      G.UI.toast('Conflicto entre dispositivos: esta partida sólo se guarda aquí. No borres los datos de este navegador; la nube mantiene otra copia.', 12000);
+    G.SaveConflictUI.showIfNeeded();
     G.LoginUI.offerRecovery();
   },
   /** Al cerrar el resumen: a la sala si sigues en una, si no al menú. */
