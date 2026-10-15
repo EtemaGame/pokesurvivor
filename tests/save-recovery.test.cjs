@@ -287,6 +287,7 @@ test('un Pokémon obtenido en un dispositivo no restaura monedas gastadas en el 
   await b.db.flush(); await b.settled();
   assert.equal(b.db.syncState, 'ok', 'los cambios independientes deben fusionarse');
   assert.equal(cloud.get(UID).save.coins, 400, 'no restaurar 100 monedas ya gastadas');
+  assert.equal(b.db.save.coins, 400, 'tampoco mostrar el saldo antiguo en el navegador');
   assert.ok(cloud.get(UID).save.owned[25]);
 });
 
@@ -304,5 +305,6 @@ test('un gasto local no se revierte cuando otro dispositivo sólo obtuvo un Pok�
   await b.db.flush(); await b.settled();
   assert.equal(b.db.syncState, 'ok', 'no hubo gastos paralelos');
   assert.equal(cloud.get(UID).save.coins, 350, 'no revertir el gasto por un reloj ajeno');
+  assert.equal(b.db.save.coins, 350);
   assert.ok(cloud.get(UID).save.owned[7]);
 });
