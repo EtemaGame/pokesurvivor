@@ -143,6 +143,9 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
       await Promise.race([exited, pause(3000)]);
     }
     await new Promise(resolve => server.close(resolve));
-    fs.rmSync(userDir, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 });
+    // Chrome puede dejar procesos secundarios escribiendo en Default un instante.
+    // No ocultar un resultado real del test por una carrera de limpieza del runner.
+    try { fs.rmSync(userDir, { recursive: true, force: true }); }
+    catch (e) { if (e.code !== 'ENOTEMPTY' && e.code !== 'EBUSY') throw e; }
   }
 });
