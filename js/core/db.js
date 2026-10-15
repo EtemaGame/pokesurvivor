@@ -311,6 +311,10 @@ G.DB = (() => {
 
   let auth = null, fs = null, rtdb = null, uid = null, unlisten = null;
   let pushT = 0, retryT = 0, pending = false, pushing = null, lastPush = 0;
+  // No borrar la cuenta mientras Firestore pueda confirmar una escritura anterior.
+  // pushNow() puede vencer a los 12 s, pero runTransaction continúa en Firebase.
+  const inFlightTransactions = new Set();
+  let deleting = false;
   // Como mucho una subida cada 30 min (con miles de jugadores, cada 5 min
   // eran decenas de miles de escrituras por hora); lo que cuesta algo
   // (gacha, mejoras), a los 30 s. La copia local se guarda siempre al momento (y se fusiona con la
@@ -454,7 +458,7 @@ G.DB = (() => {
 
   /** Sube la partida fusionándola con lo que haya en la nube (transacción). */
   function pushNow() {
-    if (mode !== 'cloud' || guest || !save || !uid) return Promise.resolve();
+    if (deleting || mode !== 'cloud' || guest || !save || !uid) return Promise.resolve();
     // Si ya hay una subida en marcha, se hace otra justo después (para lo que haya cambiado mientras).
     if (pushing) { pending = true; return pushing.then(() => (pending ? pushNow() : undefined)); }
     clearTimeout(pushT); pushT = 0; pushDue = 0;
@@ -480,6 +484,11 @@ G.DB = (() => {
       if (snap.exists && snap.data().ban === true) doc.ban = true;
       tx.set(ref, doc);
     });
+    inFlightTransactions.add(tr);
+    tr.then(
+      () => inFlightTransactions.delete(tr),
+      () => inFlightTransactions.delete(tr)
+    );
     // Si la red se cae a medias, Firestore puede quedarse esperando: tope de 12 s.
     const timeout = new Promise((_, rej) => setTimeout(() => rej({ code: 'unavailable' }), 12000));
     let failed = false;
@@ -507,6 +516,7 @@ G.DB = (() => {
   // Si ya había una subida programada antes, se respeta (una compra no espera a la siguiente partida).
   let pushDue = 0;
   function schedulePush(ms) {
+    if (deleting) return;
     const due = Date.now() + ms;
     if (pushT && pushDue && pushDue <= due) return;
     clearTimeout(pushT); pushDue = due;
@@ -519,6 +529,7 @@ G.DB = (() => {
    */
   let fails = 0;
   function scheduleRetry() {
+    if (deleting) return;
     const ms = Math.min(10 * 60e3, 15e3 * Math.pow(2, fails)) * (0.8 + Math.random() * 0.4);
     fails = Math.min(fails + 1, 8);
     clearTimeout(retryT);
@@ -543,7 +554,8 @@ G.DB = (() => {
       'auth/admin-restricted-operation': 'Ahora mismo no se pueden crear cuentas nuevas. Si ya tienes cuenta, entra normal; si no, puedes jugar como invitado.',
       'auth/requires-recent-login': 'Por seguridad, vuelve a iniciar sesión y repite la operación.',
       'permission-denied': 'La base de datos rechazó el acceso (revisa las reglas de Firestore).',
-      'unavailable': 'Sin conexión con la base de datos.'
+      'unavailable': 'Sin conexión con la base de datos.',
+      'save/delete-pending': 'Hay un guardado en curso. Espera a que termine antes de borrar la cuenta.'
     };
     if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return '';
     // El "portero" de Firebase (functions/index.js) ha rechazado la cuenta nueva: tope del mes.
@@ -698,6 +710,19 @@ G.DB = (() => {
    * Borra la cuenta y la partida (en la nube o en este navegador).
    * @param pass  contraseña (cuentas de nombre y contraseña)
    */
+  async function waitForUploadsBeforeDelete() {
+    if (!inFlightTransactions.size) return;
+    let alarm;
+    try {
+      await Promise.race([
+        Promise.allSettled([...inFlightTransactions]),
+        new Promise((_, reject) => {
+          alarm = setTimeout(() => reject({ code: 'save/delete-pending' }), 15000);
+        })
+      ]);
+    } finally { clearTimeout(alarm); }
+  }
+
   async function deleteAccount(pass) {
     if (guest || !key) return { ok: false, error: 'No hay cuenta que borrar.' };
     if (mode === 'local') {
@@ -720,15 +745,25 @@ G.DB = (() => {
       } else {
         await cu.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
       }
+      deleting = true;
+      // Antes de borrar, dejar terminar realmente todas las transacciones,
+      // incluso las que ya agotaron el timeout visual de pushNow().
+      await waitForUploadsBeforeDelete();
       clearTimeout(pushT); clearTimeout(retryT); pending = false;
       stopListening();
       for (const fn of leaveHooks) await fn('delete');
       await docRef().delete();
-      remove(K_CLOUD + uid);
       await auth.currentUser.delete();
+      // Conservar la copia local si Firebase borra el documento pero falla al
+      // borrar la cuenta: puede restaurarse al volver a iniciar sesión.
+      remove(K_CLOUD + uid);
       user = key = save = uid = null;
       return { ok: true };
     } catch (e) { return { ok: false, error: authError(e) }; }
+    finally {
+      deleting = false;
+      if (pending && uid && save) scheduleRetry();
+    }
   }
 
   // ---------------- helpers de partida ----------------
