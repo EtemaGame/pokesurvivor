@@ -1,0 +1,16 @@
+name: Baseline save recovery proof (expected red)
+on:
+  push:
+    branches:
+      - test/baseline-save-clock
+permissions:
+  contents: read
+jobs:
+  upstream-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/save-recovery.test.cjs
