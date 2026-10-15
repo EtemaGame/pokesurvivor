@@ -82,6 +82,7 @@ G.MenuUI = (() => {
       });
     }
     G.InvitePop.refresh();
+    G.SaveConflictUI.refreshMenuButtons();
   }
 
   /** Texto bajo "Amigos" y "Jugar": quién está en línea, solicitudes, sala. */
