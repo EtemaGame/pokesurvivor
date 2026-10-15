@@ -6,6 +6,7 @@ on:
       - work/save-integrity
       - fix/account-session-isolation
       - fix/cross-device-save-recovery
+      - fix/save-clock-proof
 
 permissions:
   contents: write
