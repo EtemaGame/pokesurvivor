@@ -5,7 +5,7 @@ const match=html.match(/<script>([\s\S]*?)<\/script>/);
 test('demo contains inline JavaScript with valid syntax',()=>{assert.ok(match,'missing script');new vm.Script(match[1]);});
 test('mobile controls and offline save are present',()=>{assert.match(html,/setPointerCapture/);assert.match(html,/touch-action:none/);assert.match(html,/localStorage\.setItem/);});
 test('core gameplay and economy are connected',()=>{for(const fn of ['start','update','draw','pull','choose','gainXp','finish','save','load'])assert.match(html,new RegExp('function '+fn+'\\('));});
-test('victory requires boss defeated',()=>{assert.match(html,/const bossAlive=r\.enemies\.some\(e=>e\.boss\)/);assert.match(html,/finish\(!bossAlive\)/);});
+test('victory requires boss defeated',()=>{assert.match(html,/r\.boss&&!r\.enemies\.some\(e=>e\.boss\)/);assert.match(html,/finish\(true\)/);});
 test('saved progress key remains compatible with v0.2',()=>{assert.match(html,/digimon-survivor-prototype-v2/);});
 test('all banners, probabilities and stage definitions exist',()=>{assert.match(html,/WEIGHTS=\[50,30,15,4,1\]/);assert.match(html,/BANNERS=\['General','Dragons Roar','Nature Spirits'\]/);});
 
