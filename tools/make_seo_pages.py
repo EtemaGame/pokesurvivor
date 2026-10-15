@@ -606,7 +606,7 @@ def game_en():
                   '"description": "A free Pokémon survival fan game (bullet heaven, Survivor.io style): pick a partner, survive the hordes, level up, evolve your moves, fight legendaries in rifts and play co-op with up to 4 friends."')
     s = s.replace('"inLanguage": "es"', '"inLanguage": ["es", "en"]')
     os.makedirs(os.path.join(ROOT, 'en'), exist_ok=True)
-    open(os.path.join(ROOT, 'en', 'index.html'), 'w', encoding='utf-8').write(s)
+    open(os.path.join(ROOT, 'en', 'index.html'), 'w', encoding='utf-8', newline='\r\n').write(s)
 
 # ================= 404, robots y sitemap =================
 def extra():
