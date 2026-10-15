@@ -21,6 +21,7 @@ jobs:
       - run: node tools/export_data.js
       - run: python3 tools/make_seo_pages.py
       - run: node --test tests/browser-pwa.test.cjs
+      - run: node --test tests/browser-chromium.test.cjs
       - name: Commit generated browser preview (fork branch only)
         run: |
           git config user.name 'github-actions[bot]'
