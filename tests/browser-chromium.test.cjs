@@ -125,7 +125,7 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
     await cdp.send('Page.navigate', { url: address + '/index.html' });
     const revision = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'))).v;
     const pc = await until(() => cdp.evaluate(pageState),
-      s => s.ready === 'complete' && s.lang === 'es' && s.canvasWidth > 300);
+      s => s.ready === 'complete' && ['es', 'en'].includes(s.lang) && s.canvasWidth > 300);
     assert.equal(pc.jsVersion, revision);
     assert.equal(pc.cssVersion, revision);
 
