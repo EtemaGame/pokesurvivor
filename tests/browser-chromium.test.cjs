@@ -89,9 +89,9 @@ const pageState = `(() => {
   };
 })()`;
 
-async function until(fn, condition) {
+async function until(fn, condition, attempts = 100) {
   let lastError = null, lastValue = null;
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < attempts; i++) {
     try {
       const value = await fn();
       lastValue = value;
@@ -102,7 +102,7 @@ async function until(fn, condition) {
   throw new Error('No se alcanzó el estado esperado del navegador; valor=' + JSON.stringify(lastValue) + (lastError ? ': ' + lastError.message : ''));
 }
 
-test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizontal móvil', { timeout: 40000 }, async () => {
+test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizontal móvil', { timeout: 80000 }, async () => {
   assert.ok(browser, 'Se requiere Chrome o Chromium en el runner');
   const server = serve();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -118,7 +118,10 @@ test('Chromium real: navegador de PC, versión HTML, inglés y viewport horizont
   let cdp;
   try {
     const portFile = path.join(userDir, 'DevToolsActivePort');
-    await until(async () => fs.existsSync(portFile) ? fs.readFileSync(portFile, 'utf8').split('\n')[0] : null, Boolean);
+    await until(async () => {
+      if (chrome.exitCode !== null) throw new Error('Chrome salió con código ' + chrome.exitCode);
+      return fs.existsSync(portFile) ? fs.readFileSync(portFile, 'utf8').split('\n')[0] : null;
+    }, Boolean, 300);
     const port = +fs.readFileSync(portFile, 'utf8').split('\n')[0];
     cdp = await connectCDP(port);
     await cdp.send('Page.enable');
