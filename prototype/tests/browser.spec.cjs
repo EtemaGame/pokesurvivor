@@ -1,5 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const path=require('node:path');
+test.use({hasTouch:true,isMobile:true,viewport:{width:390,height:844}});
 const url='file://'+path.resolve(__dirname,'../digimon-survivor-integral.html');
 test.beforeEach(async({page})=>{await page.goto(url);});
 test('loads mobile layout and joystick',async({page})=>{
