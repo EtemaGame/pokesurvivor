@@ -607,6 +607,10 @@ G.Game = (() => {
 
   function frame(ts) {
     const real = (ts - last) / 1000 || 0;
+    // Si tras la grieta salen cartas de vínculo u otra pausa, la transición
+    // espera a que se reanude realmente el combate (no se gasta en el menú).
+    if (state !== 'playing' && resumeSlowUntil > last)
+      resumeSlowUntil += Math.max(0, ts - last);
     const dt = Math.min(1 / 30, real) * speedK
       * (state === 'playing' ? resumeFactorAt(ts) : 1);
     last = ts;
