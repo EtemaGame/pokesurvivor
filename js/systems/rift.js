@@ -227,9 +227,8 @@ G.Rift = (() => {
     for (const p of G.Game.everyone()) { p.x = a.back.x; p.y = a.back.y; }
     pl.x = a.back.x; pl.y = a.back.y;
     if (pl.dead) pl.revive(0.3);
-    // El regreso puede dejarte dentro de una horda o sobre lava.
-    // Cada jugador protege solo a su personaje local; no altera la red.
-    pl.grantGrace(1);
+    // Cámara lenta al regresar, sin inmunidad ni cambios persistentes.
+    G.Game.resumeSlowMotion();
     G.Camera.x = pl.x; G.Camera.y = pl.y;
     G.Game.flash('#c9a6ff', 0.8);
     if (pl.bonds > 0) G.Game.offerBond();
