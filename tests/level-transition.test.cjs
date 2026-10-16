@@ -94,7 +94,7 @@ function playerFixture() {
     Projectiles: { nearest: () => null, clearOrbs: noop, clear: noop },
     Combat: { clearFields: noop },
     Hazards: { clear: noop },
-    Weather: { mult: () => 1, clear: noop, force: noop },
+    Weather: { mult: () => 1, speedFor: () => 1, clear: noop, force: noop },
     Types: { mult: () => 1, label: () => '' },
     Audio: { sfx: noop },
     FX: { ring: noop, burst: noop, dmgText: noop },
