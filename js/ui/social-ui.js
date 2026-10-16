@@ -73,7 +73,12 @@
       if (t) G.Audio.sfx(bad ? 'error' : 'confirm');
     }
 
-    function open() { withNick(() => { G.UI.show('scr-friends', true); msg(''); render(); G.Social.refreshPresence(); }); }
+    function open() { withNick(() => {
+      G.UI.show('scr-friends', true); msg(''); render();
+      // El estado de presencia puede tener hasta un minuto de caché: refrescar
+      // al abrir permite ver quién está online, pero NO bloquea invitaciones.
+      G.Social.refreshPresence(true);
+    }); }
 
     /** "hace 5 min", "hace 2 h", "hace 3 días". */
     function ago(t) {
@@ -123,7 +128,7 @@
         } else if (f.status === 'out') {
           btn('Cancelar', 'ghost', () => G.Social.remove(f.uid));
         } else {
-          if (f.online && !f.play && !inRoom && (!room || room.isHost)) {
+          if (!f.play && !inRoom && (!room || room.isHost)) {
             btn('Invitar', 'gold', async () => {
               const r = await G.Social.invite(f.uid);
               msg(r.ok ? r.msg : r.error, !r.ok);
@@ -228,12 +233,12 @@
       inv.classList.toggle('hidden', !canInvite);
       if (canInvite) {
         inv.innerHTML = '';
-        const free = G.Social.friends.filter(f => f.status === 'ok' && f.online && !ms.some(m => m.uid === f.uid));
-        if (!free.length) inv.innerHTML = '<p class="sub" style="margin:0">Ningún amigo en línea ahora mismo.</p>';
+        const free = G.Social.friends.filter(f => f.status === 'ok' && !f.play && !ms.some(m => m.uid === f.uid));
+        if (!free.length) inv.innerHTML = '<p class="sub" style="margin:0">Ningún amigo disponible para invitar.</p>';
         for (const f of free) {
           const el = document.createElement('div');
           el.className = 'fr-row';
-          el.innerHTML = `<i class="dot ${f.play ? 'play' : 'on'}"></i><b translate="no">${esc(f.name)}</b><span class="st">${f.play ? 'Jugando' : 'En línea'}</span><span class="grow"></span>`;
+          el.innerHTML = `<i class="dot ${!f.online ? 'off' : f.play ? 'play' : 'on'}"></i><b translate="no">${esc(f.name)}</b><span class="st">${f.online ? 'En línea' : 'Sin conexión reciente'}</span><span class="grow"></span>`;
           const b = document.createElement('button');
           b.className = 'btn small gold'; b.textContent = 'Invitar';
           b.onclick = async () => { const r = await G.Social.invite(f.uid); G.UI.toast(r.ok ? r.msg : r.error); };
