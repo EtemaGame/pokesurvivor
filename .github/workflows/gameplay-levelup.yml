@@ -1,0 +1,45 @@
+name: Gameplay transition safety
+on:
+  push:
+    branches:
+      - feat/gameplay-levelup-grace
+  workflow_dispatch:
+
+concurrency:
+  group: gameplay-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  gameplay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check js/game.js
+          node --check js/entities/player.js
+          node --check js/ui/run-ui.js
+          node --check js/systems/rift.js
+          node --check tests/level-transition.test.cjs
+      - name: Test gameplay safety
+        run: node --test tests/level-transition.test.cjs
+      - name: Build browser version
+        run: |
+          node tools/build.js
+          node tools/export_data.js
+          python3 tools/make_seo_pages.py
+      - name: Refresh build outputs on feature branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html en/index.html js/app.min.js version.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: gameplay preview [skip ci]'
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
