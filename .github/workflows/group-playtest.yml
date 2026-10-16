@@ -1,0 +1,46 @@
+name: Group playtest (isolated)
+on:
+  push:
+    branches:
+      - feat/group-playtest-sandbox
+  workflow_dispatch:
+
+concurrency:
+  group: group-playtest-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check js/core/firebase-config.js
+          node --check js/ui/test-lab.js
+          node --check js/game.js
+          node --check js/entities/player.js
+          node --check tools/prepare-playtest.cjs
+          node --check tools/deploy-playtest.cjs
+      - name: Test protection and gameplay
+        run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs
+      - name: Build isolated preview (no Firebase configured)
+        run: node tools/prepare-playtest.cjs
+      - name: Ensure production config is absent
+        run: |
+          test -f dist-test/index.html
+          test -f dist-test/sandbox-config.js
+          test -f dist-test/js/app.min.js
+          grep -q 'PS_TEST_FIREBASE_CONFIG = null' dist-test/sandbox-config.js
+          ! grep -q 'pokesurvivor-free' dist-test/sandbox-config.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: group-playtest-local-preview
+          path: dist-test/
+          retention-days: 7
