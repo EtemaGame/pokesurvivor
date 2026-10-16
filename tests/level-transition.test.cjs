@@ -182,20 +182,22 @@ function gameFixture() {
   const G = {
     Coop: {
       active: false, players: () => [player],
-      levelStart() { coopLevels++; }
+      levelStart() { coopLevels++; }, localPicked() {}
     },
     Audio: { sfx() {} },
     LevelUp: { offer: () => [{ apply() {} }] },
     RunUI: {
-      showLevelUp(level, cards, cb) { shown++; chosen = cb; }
-    }
+      showLevelUp(level, cards, cb) { shown++; chosen = cb; }, closeLevelUp() {}
+    },
+    UI: { hide() {}, isOpen() { return false; } }
   };
   const raw = source('js/game.js');
   const target = '  return {\n    init, startRun, everyone, levelXp, flash, offerBond,';
   assert.ok(raw.includes(target), 'No se encontró el punto de acceso de prueba al flujo real');
   const injected = raw.replace(target, '  return {\n    __test: {\n' +
     "      seed(pending) { state = 'playing'; pl = G.Coop.players()[0]; pendingLevels = pending; levelSlowUntil = 0; slowUsedForBatch = false; },\n" +
-    '      step: maybeLevelUp, get slowUntil() { return levelSlowUntil; }, get state() { return state; }\n' +
+    '      step: maybeLevelUp, startCoopLevel: coopApi.levelStart, resumeCoop: coopApi.resume,
+      get slowUntil() { return levelSlowUntil; }, get state() { return state; }\n' +
     '    },\n    init, startRun, everyone, levelXp, flash, offerBond,');
   vm.runInNewContext(injected, { G, performance: { now: () => now } });
   return {
@@ -233,4 +235,19 @@ test('cooperativo: mantiene la pausa compartida, sin ralentización individual',
   assert.equal(x.coopLevels, 1);
   assert.equal(x.G.Game.__test.slowUntil, 0);
   assert.equal(x.shown, 0);
+});
+
+test('cooperativo: el escudo llega tras elegir TODOS y no se repite por reenvíos', () => {
+  const x = gameFixture();
+  x.G.Coop.active = true;
+  x.G.Game.__test.seed(1);
+  x.G.Game.__test.startCoopLevel(4);
+  assert.equal(x.G.Game.__test.state, 'levelup');
+  assert.equal(x.grace, 0);
+  x.choose();
+  assert.equal(x.grace, 0, 'elegir antes que los demás no activa inmunidad');
+  x.G.Game.__test.resumeCoop();
+  assert.equal(x.grace, 1);
+  x.G.Game.__test.resumeCoop();
+  assert.equal(x.grace, 1, 'un reenvío no vuelve a dar inmunidad');
 });
