@@ -427,7 +427,9 @@ G.DB = (() => {
   async function initCloud() {
     const cfg = G.FIREBASE_CONFIG;
     if (!/^https?:$/.test(location.protocol)) { localReason = 'file'; return false; }
-    if (cfg && !cfg.emulator && !HOSTS.includes(location.hostname)) { localReason = 'host'; return false; }
+    const sandboxHost = cfg && (location.hostname === cfg.projectId + '.web.app'
+      || location.hostname === cfg.projectId + '.firebaseapp.com');
+    if (cfg && !cfg.emulator && !HOSTS.includes(location.hostname) && !sandboxHost) { localReason = 'host'; return false; }
     if (!cfg || !cfg.apiKey || !cfg.projectId) { localReason = 'config'; return false; }
     await loadScript(SDK + 'firebase-app-compat.js');
     await loadScript(SDK + 'firebase-auth-compat.js');
