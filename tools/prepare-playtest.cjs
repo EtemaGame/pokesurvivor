@@ -22,10 +22,12 @@ function validate(raw) {
   return cfg;
 }
 const fromEnv = process.env.PS_TEST_FIREBASE_CONFIG;
-const raw = fromEnv || (fs.existsSync(local) ? fs.readFileSync(local, 'utf8') : null);
+const committed = path.join(root, 'playtest-config.json');
+const raw = fromEnv || (fs.existsSync(local) ? fs.readFileSync(local, 'utf8')
+  : fs.existsSync(committed) ? fs.readFileSync(committed, 'utf8') : null);
 const config = raw ? validate(raw) : null;
 if (process.argv.includes('--require-config') && !config)
-  throw Error('Falta playtest-config.local.json. NO se publicará el juego sin un Firebase separado.');
+  throw Error('Falta una configuración válida del laboratorio. NO se publicará sin Firebase separado.');
 
 cp.execFileSync(process.execPath, ['tools/build.js', '--sin-seo'], { cwd: root, stdio: 'inherit' });
 cp.execFileSync(process.execPath, ['tools/export_data.js'], { cwd: root, stdio: 'inherit' });
