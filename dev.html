@@ -79,6 +79,7 @@
 </script>
 <!-- seo:end -->
 <link rel="stylesheet" href="css/style.css">
+<script src="sandbox-config.js"></script>
 </head>
 <body>
 
@@ -118,6 +119,7 @@
     <div class="row" style="margin-top:10px">
       <button id="btn-guest" class="btn ghost grow" type="button">Jugar como invitado</button>
     </div>
+    <p class="note center" style="color:#ffd23f">VERSIÓN EXPERIMENTAL · Cuentas nuevas de prueba, no las oficiales</p>
     <p class="note center" id="login-mode"></p>
     <p class="note center"><!-- seo:begin --><a href="guia/">Guía</a> · <a href="pokedex/">Pokédex</a> · <!-- seo:end --><a href="#" class="legal-link" data-legal>Aviso legal y privacidad</a></p>
   </div>
@@ -191,6 +193,11 @@
     </div>
     <div class="box" style="padding:14px 18px">
       <div id="menu-stats" style="font-size:14px;color:var(--muted)"></div>
+    </div>
+    <div id="lab-panel" class="box hidden" style="padding:14px 18px">
+      <b>Laboratorio · Solo cuentas de prueba</b>
+      <p class="note" id="lab-info">Desbloquea la Pokédex en tu propia cuenta temporal.</p>
+      <button id="lab-seed" class="btn small gold">Preparar cuenta DEV</button>
     </div>
   </div>
 </section>
@@ -624,6 +631,7 @@
 <script defer src="js/ui/slots.js"></script>
 <script defer src="js/ui/gacha-ui.js"></script>
 <script defer src="js/ui/run-ui.js"></script>
+<script defer src="js/ui/test-lab.js"></script>
 <script defer src="js/ui/social-ui.js"></script>
 <script defer src="js/ui/ranking-ui.js"></script>
 <script defer src="js/ui/mod-ui.js"></script>
