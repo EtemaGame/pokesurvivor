@@ -18,10 +18,18 @@ G.Game = (() => {
   let cv, ctx, dpr = 1, w = 0, h = 0;
   let state = 'ui';
   let time = 0, last = 0, pendingLevels = 0;
-  // Transición de subida: 0,7 s reales a 35 % de velocidad, SOLO en solitario.
-  // Una transición por tanda de niveles; el cooperativo nunca altera su reloj.
-  const LEVEL_SLOW_MS = 700, LEVEL_SLOW_FACTOR = 0.35;
-  let levelSlowUntil = 0, slowUsedForBatch = false;
+  // Al REANUDAR después de elegir carta o salir de una grieta:
+  // tiempo lento, no invulnerabilidad. La misma escala se usa en cada cliente
+  // cooperativo; el anfitrión sigue siendo autoridad del reloj y los enemigos.
+  const RESUME_SLOW_MS = 850, RESUME_SLOW_FACTOR = 0.35;
+  let resumeSlowUntil = 0;
+  function resumeSlowMotion() {
+    const now = performance.now();
+    // No se encadenan ralentizaciones mientras otra sigue activa.
+    if (now < resumeSlowUntil) return;
+    resumeSlowUntil = now + RESUME_SLOW_MS;
+  }
+  const resumeFactorAt = ts => ts < resumeSlowUntil ? RESUME_SLOW_FACTOR : 1;
   let pl = null;
   let caught = [];          // shinies conseguidos en esta run
   let biome = -1;
@@ -113,7 +121,7 @@ G.Game = (() => {
     G.World.setBiome(0, true);
     biome = 0;
     time = 0; pendingLevels = 0;
-    levelSlowUntil = 0; slowUsedForBatch = false;
+    resumeSlowUntil = 0;
     runReal = performance.now(); tampered = false;
 
     pl = new G.Player(mon, perks, !!save.partnerShiny && G.DB.ownsShiny(mon.dex));
@@ -219,9 +227,8 @@ G.Game = (() => {
       G.RunUI.closeLevelUp();
       if (state === 'levelup') {
         state = holdBy.length ? 'held' : 'playing';
-        // Se concede cuando TODOS terminaron, no al elegir una carta
-        // mientras el resto sigue esperando.
-        pl.grantGrace(1);
+        // Solo cuando TODOS terminaron. No se concede inmunidad.
+        resumeSlowMotion();
         afterLevelUp();
       }
     },
@@ -378,23 +385,14 @@ G.Game = (() => {
     }
     // Nunca abras cartas con el Pokémon caído (morir y recoger XP en el mismo frame).
     if (pl.dead) return;
-    if (!slowUsedForBatch) {
-      slowUsedForBatch = true;
-      levelSlowUntil = performance.now() + LEVEL_SLOW_MS;
-      G.Audio.sfx('levelup');
-      return;
-    }
-    if (performance.now() < levelSlowUntil) return;
-    levelSlowUntil = 0;
     pendingLevels--;
-    // Si se ganaron varios niveles a la vez, no se repite la transición.
-    if (!pendingLevels) slowUsedForBatch = false;
     state = 'levelup';
+    G.Audio.sfx('levelup');
     G.RunUI.showLevelUp(pl.level, G.LevelUp.offer(pl), card => {
       G.Audio.sfx('confirm');
       card.apply(pl);
-      pl.grantGrace(1);
       state = 'playing';
+      resumeSlowMotion();
     });
   }
 
@@ -609,8 +607,8 @@ G.Game = (() => {
 
   function frame(ts) {
     const real = (ts - last) / 1000 || 0;
-    const slow = state === 'playing' && !G.Coop.active && ts < levelSlowUntil;
-    const dt = Math.min(1 / 30, real) * speedK * (slow ? LEVEL_SLOW_FACTOR : 1);
+    const dt = Math.min(1 / 30, real) * speedK
+      * (state === 'playing' ? resumeFactorAt(ts) : 1);
     last = ts;
     if (state === 'playing') G.Settings.sample(real);
     fpsAcc += real; fpsN++;
@@ -885,7 +883,7 @@ G.Game = (() => {
   })();
 
   return {
-    init, startRun, everyone, levelXp, flash, offerBond,
+    init, startRun, everyone, levelXp, flash, offerBond, resumeSlowMotion,
     /** Para pruebas: salta el reloj de la run. */
     debugTime(t) { tampered = true; time = t; },
     /** Para grabar vídeos: cámara lenta (0,5 = mitad de velocidad). */
