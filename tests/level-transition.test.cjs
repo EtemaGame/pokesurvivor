@@ -196,8 +196,8 @@ function gameFixture() {
   assert.ok(raw.includes(target), 'No se encontró el punto de acceso de prueba al flujo real');
   const injected = raw.replace(target, '  return {\n    __test: {\n' +
     "      seed(pending) { state = 'playing'; pl = G.Coop.players()[0]; pendingLevels = pending; levelSlowUntil = 0; slowUsedForBatch = false; },\n" +
-    '      step: maybeLevelUp, startCoopLevel: coopApi.levelStart, resumeCoop: coopApi.resume,
-      get slowUntil() { return levelSlowUntil; }, get state() { return state; }\n' +
+    '      step: maybeLevelUp, startCoopLevel: coopApi.levelStart, resumeCoop: coopApi.resume,\n' +
+    '      get slowUntil() { return levelSlowUntil; }, get state() { return state; }\n' +
     '    },\n    init, startRun, everyone, levelXp, flash, offerBond,');
   vm.runInNewContext(injected, { G, performance: { now: () => now } });
   return {
