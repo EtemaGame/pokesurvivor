@@ -48,9 +48,9 @@ Si las cuentas dan error de «dominio no autorizado», abre Firebase Console →
 - Compartir el enlace solo después de que la web esté publicada.
 - Usar **cuentas nuevas de laboratorio** con contraseñas distintas a las oficiales. No utilizar Google ni contraseñas reales del juego.
 - Cada persona pasa la elección inicial y pulsa **Preparar cuenta DEV** en el menú para probar cualquier Pokémon, incluido shiny cuando exista.
-- Entrar a Amigos, agregarse y probar cooperativo con 2–4 personas.
-- Subida de nivel: en solitario, cámara lenta breve (0,7 s); en cooperativo, pausa compartida, bloqueo de selección de 0,4 s y 1 s de protección después de elegir todos.
-- Volver de una grieta: 1 s de protección; al terminar debe poder recibirse daño nuevamente.
+- Entrar a Amigos, agregarse y probar cooperativo con 2–4 personas. El anfitrión puede invitar aunque el indicador de presencia del amigo esté retrasado; si la sala falla, ahora se muestra el código de error para diagnosticar las reglas.
+- Subida de nivel: las cartas aparecen en pausa, sin elección accidental los primeros 0,4 s; al terminar de elegir (todos en cooperativo), hay cámara lenta 0,85 s al 35 % del ritmo normal, **sin inmunidad extra**.
+- Al volver de una grieta: cámara lenta 0,85 s al 35 % del ritmo, **no escudo**. El daño de enemigos y lava sigue siendo posible. Si aparece una elección de vínculo, el efecto espera al regreso al combate.
 - Revisar que las cuentas se sincronizan entre dispositivos y que no hay fallos de conexión.
 
 ## Restricciones
