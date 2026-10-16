@@ -21,3 +21,7 @@ docs/CONTACTOS_CREADORES.md
 
 # Caché local de wrangler (Cloudflare)
 .wrangler/
+
+# Solo en laboratorio, nunca subir configuraciones privadas de despliegue
+playtest-config.local.json
+dist-test/
