@@ -59,6 +59,7 @@ G.Player = class Player {
     this.dmgDealt = 0;
 
     this.invuln = 0;
+    this.graceT = 0;           // protección breve tras cartas o regreso de grieta
     this.flash = 0;
     this.aim = Math.PI / 2;
     this.moveAngle = Math.PI / 2;
@@ -220,13 +221,21 @@ G.Player = class Player {
     this.attackFace = 0.35;
   }
 
+  // Protección de transición: nunca suma segundos, ni revive a un Pokémon caído.
+  grantGrace(seconds = 1) {
+    if (this.dead || !Number.isFinite(seconds)) return;
+    const t = Math.max(0, Math.min(2, seconds));
+    this.graceT = Math.max(this.graceT, t);
+    this.invuln = Math.max(this.invuln, t);
+  }
+
   // ---------------- daño y curación ----------------
   /**
    * @param type  tipo del ataque (tabla de tipos y clima); sin tipo, daño tal cual
    * @param pure  daño que no baja con la defensa ni el cuerpo a cuerpo (Arceus)
    */
   hurt(amount, type = null, pure = false) {
-    if (this.invuln > 0 || this.dead) return;
+    if (this.invuln > 0 || this.graceT > 0 || this.dead) return;
     let eff = null;
     if (type) {
       const k = G.Types.mult(type, this.mon.types);
@@ -316,6 +325,7 @@ G.Player = class Player {
     this.anim.update(dt);
     if (this.dead) return;
     if (this.invuln > 0) this.invuln -= dt;
+    if (this.graceT > 0) this.graceT -= dt;
     if (this.flash > 0) this.flash -= dt;
     if (this.attackFace > 0) this.attackFace -= dt;
 
@@ -349,9 +359,14 @@ G.Player = class Player {
       if (le.dmg) {
         this.lavaTick -= dt;
         if (this.lavaTick <= 0) {
-          this.lavaTick = le.every; this.invuln = 0;
-          this.hurt(Math.max(le.flat, this.maxHp * le.dmg * 0.5));
-          G.FX.burst(this.x, this.y - 4, le.color, 5, 70);
+          this.lavaTick = le.every;
+          // La lava atraviesa la inmunidad normal por golpe, no la protección
+          // explícita al reanudar el combate.
+          if (this.graceT <= 0) {
+            this.invuln = 0;
+            this.hurt(Math.max(le.flat, this.maxHp * le.dmg * 0.5));
+            G.FX.burst(this.x, this.y - 4, le.color, 5, 70);
+          }
         }
       } else if (this.walking && Math.random() < dt * 8) {
         G.FX.burst(this.x, this.y, le.slide ? '#ffffff' : '#b3defa', 2, 40);
