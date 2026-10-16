@@ -28,6 +28,7 @@ if (process.argv.includes('--require-config') && !config)
   throw Error('Falta playtest-config.local.json. NO se publicará el juego sin un Firebase separado.');
 
 cp.execFileSync(process.execPath, ['tools/build.js', '--sin-seo'], { cwd: root, stdio: 'inherit' });
+cp.execFileSync(process.execPath, ['tools/export_data.js'], { cwd: root, stdio: 'inherit' });
 cp.execFileSync('python3', ['tools/make_seo_pages.py'], { cwd: root, stdio: 'inherit' });
 
 fs.rmSync(output, { recursive: true, force: true });
