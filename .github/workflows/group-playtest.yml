@@ -30,15 +30,16 @@ jobs:
           node --check tools/deploy-playtest.cjs
       - name: Test protection and gameplay
         run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs
-      - name: Build isolated preview (no Firebase configured)
+      - name: Build preview for Etéma sandbox
         run: node tools/prepare-playtest.cjs
       - name: Ensure production config is absent
         run: |
           test -f dist-test/index.html
           test -f dist-test/sandbox-config.js
           test -f dist-test/js/app.min.js
-          grep -q 'PS_TEST_FIREBASE_CONFIG = null' dist-test/sandbox-config.js
+          grep -q 'ps-test-etema-261016' dist-test/sandbox-config.js
           ! grep -q 'pokesurvivor-free' dist-test/sandbox-config.js
+          node -e "const c=require('./playtest-config.json');if(c.projectId!=='ps-test-etema-261016'||c.authDomain!==c.projectId+'.firebaseapp.com')process.exit(1)"
       - uses: actions/upload-artifact@v4
         with:
           name: group-playtest-local-preview
