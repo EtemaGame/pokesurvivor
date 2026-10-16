@@ -76,6 +76,7 @@ test('el bloqueo también protege la opción de cambiar cartas, incluida la espe
 
 function playerFixture() {
   const liquid = { on: false };
+  let slowdowns = 0;
   const noop = () => {};
   const G = {
     Sprites: {
@@ -107,78 +108,57 @@ function playerFixture() {
   const context = { G, performance: { now: () => 0 } };
   vm.runInNewContext(source('js/entities/player.js'), context);
   const player = new G.Player({ dex: 25, types: ['electric'], hp: 100, atk: 12, spd: 100 });
-  G.Game = { player, everyone: () => [player], flash: noop, offerBond: noop, st: { time: 0 } };
-  return { G, context, player, liquid };
+  G.Game = { player, everyone: () => [player], flash: noop, offerBond: noop,
+    resumeSlowMotion() { slowdowns++; }, st: { time: 0 } };
+  return { G, context, player, liquid, get slows() { return slowdowns; } };
 }
 
-test('la protección de un segundo impide daño ordinario y luego caduca', () => {
+test('sin escudo extra: el daño normal sigue funcionando inmediatamente', () => {
   const { player } = playerFixture();
-  player.grantGrace(1);
-  player.hurt(10);
-  assert.equal(player.hp, 100);
-  player.update(0.5);
-  player.hurt(10);
-  assert.equal(player.hp, 100);
-  player.update(0.51);
+  assert.equal(player.graceT, undefined);
+  assert.equal(player.grantGrace, undefined);
   player.hurt(10);
   assert.equal(player.hp, 90);
+  player.hurt(10);
+  assert.equal(player.hp, 90, 'el periodo de inmunidad normal tras recibir daño permanece');
 });
 
-test('la protección de transición no puede acumularse indefinidamente', () => {
-  const { player } = playerFixture();
-  player.grantGrace(1);
-  player.grantGrace(1);
-  assert.equal(player.graceT, 1);
-  player.grantGrace(999);
-  assert.equal(player.graceT, 2);
-  player.dead = true;
-  player.grantGrace(1);
-  assert.equal(player.graceT, 2);
-});
-
-test('la lava respeta la protección especial, pero vuelve a hacer daño después', () => {
+test('la lava sigue haciendo daño sin excepción por transición', () => {
   const { player, liquid } = playerFixture();
   liquid.on = true;
-  player.grantGrace(1);
-  player.update(0.3);
-  player.update(0.3);
-  assert.equal(player.hp, 100);
-  player.update(0.5);
+  player.update(0.1);
   assert.ok(player.hp < 100);
 });
 
-test('volver de una grieta concede protección sin extenderla al repetir el evento', () => {
-  const { G, context, player } = playerFixture();
-  vm.runInNewContext(source('js/systems/rift.js'), context);
-  G.Rift.onEvent(['arena', { tx: 20, ty: 30, r: 11, type: 'fire' }]);
-  G.Rift.onEvent(['al']);
-  G.Rift.update(1.3, player, 0);
-  assert.equal(G.Rift.inArena, false);
-  assert.equal(player.graceT, 1);
-  player.update(0.6);
-  G.Rift.update(0.1, player, 0);
-  assert.ok(player.graceT < 1);
+test('al regresar de una grieta se activa cámara lenta, no un escudo', () => {
+  const x = playerFixture();
+  vm.runInNewContext(source('js/systems/rift.js'), x.context);
+  x.G.Rift.onEvent(['arena', { tx: 20, ty: 30, r: 11, type: 'fire' }]);
+  x.G.Rift.onEvent(['al']);
+  x.G.Rift.update(1.3, x.player, 0);
+  assert.equal(x.G.Rift.inArena, false);
+  assert.equal(x.slows, 1);
+  assert.equal(x.player.invuln, 0);
+  x.G.Rift.update(0.1, x.player, 0);
+  assert.equal(x.slows, 1, 'no se repite al actualizar después de volver');
 });
 
-test('la resurrección conserva sus 2 segundos de invulnerabilidad', () => {
-  const { G, context, player } = playerFixture();
-  vm.runInNewContext(source('js/systems/rift.js'), context);
-  G.Rift.onEvent(['arena', { tx: 20, ty: 30, r: 11, type: 'fire' }]);
-  player.dead = true;
-  player.hp = 0;
-  G.Rift.onEvent(['al']);
-  G.Rift.update(1.3, player, 0);
-  assert.equal(player.dead, false);
-  assert.equal(player.invuln, 2);
-  assert.equal(player.graceT, 1);
+test('revivir conserva los 2 segundos de inmunidad originales', () => {
+  const x = playerFixture();
+  vm.runInNewContext(source('js/systems/rift.js'), x.context);
+  x.G.Rift.onEvent(['arena', { tx: 20, ty: 30, r: 11, type: 'fire' }]);
+  x.player.dead = true;
+  x.player.hp = 0;
+  x.G.Rift.onEvent(['al']);
+  x.G.Rift.update(1.3, x.player, 0);
+  assert.equal(x.player.dead, false);
+  assert.equal(x.player.invuln, 2);
+  assert.equal(x.slows, 1);
 });
 
 function gameFixture() {
-  let now = 0, chosen = null, shown = 0, grace = 0, coopLevels = 0;
-  const player = {
-    level: 4, dead: false,
-    grantGrace(s) { grace += s; }
-  };
+  let now = 0, chosen = null, shown = 0, coopLevels = 0;
+  const player = { level: 4, dead: false };
   const G = {
     Coop: {
       active: false, players: () => [player],
@@ -192,62 +172,61 @@ function gameFixture() {
     UI: { hide() {}, isOpen() { return false; } }
   };
   const raw = source('js/game.js');
-  const target = '  return {\n    init, startRun, everyone, levelXp, flash, offerBond,';
-  assert.ok(raw.includes(target), 'No se encontró el punto de acceso de prueba al flujo real');
+  const target = '  return {\n    init, startRun, everyone, levelXp, flash, offerBond, resumeSlowMotion,';
+  assert.ok(raw.includes(target), 'No se encontró el flujo real');
   const injected = raw.replace(target, '  return {\n    __test: {\n' +
-    "      seed(pending) { state = 'playing'; pl = G.Coop.players()[0]; pendingLevels = pending; levelSlowUntil = 0; slowUsedForBatch = false; },\n" +
+    "      seed(pending) { state = 'playing'; pl = G.Coop.players()[0]; pendingLevels = pending; resumeSlowUntil = 0; },\n" +
     '      step: maybeLevelUp, startCoopLevel: coopApi.levelStart, resumeCoop: coopApi.resume,\n' +
-    '      get slowUntil() { return levelSlowUntil; }, get state() { return state; }\n' +
-    '    },\n    init, startRun, everyone, levelXp, flash, offerBond,');
+    '      get slowUntil() { return resumeSlowUntil; }, speedAt: resumeFactorAt, get state() { return state; }\n' +
+    '    },\n    init, startRun, everyone, levelXp, flash, offerBond, resumeSlowMotion,');
   vm.runInNewContext(injected, { G, performance: { now: () => now } });
   return {
     G, player, clock(v) { now = v; }, choose() { assert.ok(chosen); chosen({ apply() {} }); },
-    get shown() { return shown; }, get grace() { return grace; }, get coopLevels() { return coopLevels; }
+    get shown() { return shown; }, get coopLevels() { return coopLevels; }
   };
 }
 
-test('solo: ralentización de 700 ms, una vez por tanda de niveles, y escudo al elegir', () => {
+test('solo: cartas inmediatas, ralentización durante 850 ms DESPUÉS de elegir', () => {
   const x = gameFixture();
-  x.G.Game.__test.seed(2);
-  x.G.Game.__test.step();
-  assert.equal(x.G.Game.__test.slowUntil, 700);
-  assert.equal(x.shown, 0);
-  x.clock(699);
-  x.G.Game.__test.step();
-  assert.equal(x.shown, 0);
-  x.clock(700);
+  x.G.Game.__test.seed(1);
   x.G.Game.__test.step();
   assert.equal(x.shown, 1);
+  assert.equal(x.G.Game.__test.state, 'levelup');
+  assert.equal(x.G.Game.__test.slowUntil, 0);
   x.choose();
-  assert.equal(x.grace, 1);
   assert.equal(x.G.Game.__test.state, 'playing');
-  x.G.Game.__test.step();
-  assert.equal(x.shown, 2, 'varios niveles en una tanda no repiten la espera');
-  x.choose();
-  assert.equal(x.grace, 2);
+  assert.equal(x.G.Game.__test.slowUntil, 850);
+  assert.equal(x.G.Game.__test.speedAt(0), 0.35);
+  assert.equal(x.G.Game.__test.speedAt(849), 0.35);
+  assert.equal(x.G.Game.__test.speedAt(850), 1);
 });
 
-test('cooperativo: mantiene la pausa compartida, sin ralentización individual', () => {
+test('la ralentización no se suma ni reinicia por eventos repetidos', () => {
+  const x = gameFixture();
+  x.G.Game.__test.seed(0);
+  x.G.Game.resumeSlowMotion();
+  x.clock(200);
+  x.G.Game.resumeSlowMotion();
+  assert.equal(x.G.Game.__test.slowUntil, 850);
+  x.clock(851);
+  x.G.Game.resumeSlowMotion();
+  assert.equal(x.G.Game.__test.slowUntil, 1701);
+});
+
+test('cooperativo: se espera a todos, solo entonces comienza cámara lenta', () => {
   const x = gameFixture();
   x.G.Coop.active = true;
   x.G.Game.__test.seed(1);
   x.G.Game.__test.step();
   assert.equal(x.coopLevels, 1);
   assert.equal(x.G.Game.__test.slowUntil, 0);
-  assert.equal(x.shown, 0);
-});
-
-test('cooperativo: el escudo llega tras elegir TODOS y no se repite por reenvíos', () => {
-  const x = gameFixture();
-  x.G.Coop.active = true;
-  x.G.Game.__test.seed(1);
   x.G.Game.__test.startCoopLevel(4);
   assert.equal(x.G.Game.__test.state, 'levelup');
-  assert.equal(x.grace, 0);
   x.choose();
-  assert.equal(x.grace, 0, 'elegir antes que los demás no activa inmunidad');
+  assert.equal(x.G.Game.__test.slowUntil, 0);
   x.G.Game.__test.resumeCoop();
-  assert.equal(x.grace, 1);
+  assert.equal(x.G.Game.__test.slowUntil, 850);
   x.G.Game.__test.resumeCoop();
-  assert.equal(x.grace, 1, 'un reenvío no vuelve a dar inmunidad');
+  assert.equal(x.G.Game.__test.slowUntil, 850);
+  assert.equal(x.G.Game.__test.speedAt(849), 0.35);
 });
