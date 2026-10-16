@@ -2,10 +2,14 @@
 G.RunUI = (() => {
   const $ = G.UI.$;
   let offers = null, offerCb = null, coopMode = false;
+  // Evita que las teclas 1-3 usadas en combate seleccionen una carta al aparecer.
+  const PICK_LOCK_MS = 400;
+  let chooseAfter = 0;
 
   /** @param coop  en grupo: tras elegir, se queda esperando a los demás */
   function showLevelUp(level, list, cb, coop = false) {
     offerCb = cb; coopMode = coop;
+    chooseAfter = performance.now() + PICK_LOCK_MS;
     $('lvl-num').textContent = level;
     $('lvl-wait').textContent = '';
     $('lvl-wait').classList.toggle('hidden', !coop);
@@ -26,7 +30,7 @@ G.RunUI = (() => {
   }
 
   function reroll() {
-    if (!offers || rerollsLeft() <= 0) return;
+    if (!offers || performance.now() < chooseAfter || rerollsLeft() <= 0) return;
     const p = G.Game.player;
     p.rerolls = (p.rerolls || 0) + 1;
     G.Audio.sfx('select');
@@ -60,7 +64,7 @@ G.RunUI = (() => {
   }
 
   function pick(i) {
-    if (!offers || !offers[i]) return;
+    if (!offers || performance.now() < chooseAfter || !offers[i]) return;
     const c = offers[i], cb = offerCb;
     offers = null; offerCb = null;
     $('lvl-reroll').classList.add('hidden');
@@ -84,7 +88,7 @@ G.RunUI = (() => {
   }
 
   function closeLevelUp() {
-    offers = null; offerCb = null;
+    offers = null; offerCb = null; chooseAfter = 0;
     $('cards').classList.remove('done');
     G.UI.hide('scr-levelup');
   }
