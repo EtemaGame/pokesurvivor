@@ -21,6 +21,9 @@ cp.execFileSync(npx, ['--yes', 'firebase-tools@14.12.0', 'deploy',
   '--project', config.projectId,
   '--config', 'firebase.playtest.json',
   '--only', 'hosting,firestore,database'], {
-  cwd: root, stdio: 'inherit', shell: process.platform === 'win32'
+  cwd: root, stdio: 'inherit', shell: process.platform === 'win32',
+  // El laboratorio incluye miles de sprites: limitar subidas paralelas evita
+  // los errores de socket de Hosting con conexiones/VMs saturadas.
+  env: { ...process.env, FIREBASE_HOSTING_UPLOAD_CONCURRENCY: '10' }
 });
 console.log('Web del grupo: https://' + config.projectId + '.web.app/');
