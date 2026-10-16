@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/group-playtest-sandbox
+      - fix/lab-party-and-resume-slow
   workflow_dispatch:
 
 concurrency:
@@ -25,11 +26,15 @@ jobs:
           node --check js/core/firebase-config.js
           node --check js/ui/test-lab.js
           node --check js/game.js
+          node --check js/net/social.js
+          node --check js/ui/social-ui.js
+          node --check js/systems/rift.js
+          node --check js/entities/player.js
           node --check js/entities/player.js
           node --check tools/prepare-playtest.cjs
           node --check tools/deploy-playtest.cjs
       - name: Test protection and gameplay
-        run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs
+        run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs tests/party-invitations.test.cjs
       - name: Build preview for Etéma sandbox
         run: node tools/prepare-playtest.cjs
       - name: Ensure production config is absent
