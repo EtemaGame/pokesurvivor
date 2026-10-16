@@ -329,7 +329,7 @@ G.Social = (() => {
     if (!host) { rtOff(); return { ok: false, error: 'Esa sala ya no existe.' }; }
     if (open !== true) { rtOff(); return { ok: false, error: 'La partida de esa sala ya ha empezado.' }; }
     try { await fb.rtdb.ref('rooms/' + id + '/m/' + uid).set(memberInfo()); }
-    catch (e) { rtOff(); return { ok: false, error: 'No se pudo entrar en la sala.' }; }
+    catch (e) { rtOff(); return { ok: false, error: 'No se pudo entrar en la sala (' + ((e && e.code) || 'conexión') + ').' }; }
     const n = (await fb.rtdb.ref('rooms/' + id + '/m').get()).numChildren();
     if (n > MAX_PLAYERS) {
       await fb.rtdb.ref('rooms/' + id + '/m/' + uid).remove();
@@ -415,10 +415,18 @@ G.Social = (() => {
     if (!f || f.status !== 'ok') return { ok: false, error: 'Sólo puedes invitar a tus amigos.' };
     if (room && room.members.length >= MAX_PLAYERS) return { ok: false, error: 'La sala está llena.' };
     if (room && !room.isHost) return { ok: false, error: 'Sólo el anfitrión de la sala puede invitar.' };
-    if (!room) await createRoom();
+    if (!room) {
+      try { await createRoom(); }
+      catch (e) {
+        // Sin sala no se puede enviar una invitación: mostrar el error y
+        // desconectar RTDB; nunca dejar el botón sin respuesta.
+        rtOff();
+        return { ok: false, error: 'No se pudo crear la sala (' + ((e && e.code) || 'conexión') + ').' };
+      }
+    }
     try {
       await fb.fs.collection('inv').doc(other + '_' + uid).set({ to: other, from: uid, room: room.id, name: me.name, at: fts() });
-    } catch (e) { return { ok: false, error: 'No se pudo invitar (' + (e.code || 'error') + ').' }; }
+    } catch (e) { return { ok: false, error: 'No se pudo invitar (' + ((e && e.code) || 'error') + ').' }; }
     sentInv.add(other);
     return { ok: true, msg: 'Invitación enviada a ' + f.name };
   }
