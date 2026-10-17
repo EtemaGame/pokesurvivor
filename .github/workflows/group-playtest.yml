@@ -4,6 +4,7 @@ on:
     branches:
       - feat/group-playtest-sandbox
       - fix/lab-party-and-resume-slow
+      - fix/lab-coop-room-creation
   workflow_dispatch:
 
 concurrency:
