@@ -115,7 +115,10 @@ G.CombatStats = (() => {
   }
 
   function html(pl, seconds, team, full = true) {
-    const s = snapshot(pl, seconds, team);
+    return render(snapshot(pl, seconds, team), pl, full);
+  }
+
+  function render(s, pl, full = true) {
     const line = (a,b) => '<div style="display:flex;justify-content:space-between;gap:12px"><span>' + a +
       '</span><b>' + b + '</b></div>';
     let out = '<section style="text-align:left;font-size:13px;line-height:1.65">' +
@@ -155,5 +158,5 @@ G.CombatStats = (() => {
       'En cooperativo, el daño de otros jugadores es el informado por sus propios clientes.</p></section>';
   }
 
-  return { reset, note, snapshot, theoretical, details, cardInfo, html, fmt, dec };
+  return { reset, note, snapshot, theoretical, details, cardInfo, html, render, fmt, dec };
 })();
