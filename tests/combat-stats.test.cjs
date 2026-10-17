@@ -128,7 +128,7 @@ test('plantillas de HUD, cartas, Pausa y fin de ronda quedan conectadas', () => 
   assert.ok(game.includes('G.CombatStats.snapshot(pl, time, combatTeam)'));
   assert.ok(run.includes('G.CombatStats.cardInfo'));
   assert.ok(hud.includes('G.CombatStats.snapshot(pl, st.time)'));
-  assert.ok(coop.includes('r1(local.dmgDealt)'));
+  assert.ok(coop.includes('G.CombatStats.damage()'));
   assert.ok(coop.includes('damage: Math.max(0, a[15] || 0)'));
 });
 
