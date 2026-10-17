@@ -131,3 +131,50 @@ test('plantillas de HUD, cartas, Pausa y fin de ronda quedan conectadas', () => 
   assert.ok(coop.includes('r1(local.dmgDealt)'));
   assert.ok(coop.includes('damage: Math.max(0, a[15] || 0)'));
 });
+
+test('el informe separa daño directo de quemaduras y venenos sin duplicar impactos', () => {
+  const { G, pl } = fixture();
+  G.CombatStats.reset();
+  G.CombatStats.note(pl, 'ember', 23);
+  G.CombatStats.note(pl, 'ember', 4, 'burn');
+  G.CombatStats.note(pl, 'ember', 6, 'poison');
+  const s = G.CombatStats.snapshot(pl, 10);
+  assert.equal(s.total, 33);
+  assert.equal(s.direct, 23);
+  assert.equal(s.periodic, 10);
+  assert.equal(s.hits, 1);
+  assert.equal(s.moves[0].burn, 4);
+  assert.equal(s.moves[0].poison, 6);
+  assert.equal(G.CombatStats.damage(), 33);
+  assert.ok(G.CombatStats.render(s, pl).includes('quemadura'));
+});
+
+test('la medición respeta escudos y vida restante sin alterar el daño base del juego', () => {
+  const { G, pl, context } = fixture();
+  G.Types = { mult: () => 1, label: () => null };
+  G.Weather = { mult: () => 1 };
+  G.FX = {};
+  const srcCombat = src('js/systems/combat.js');
+  vm.runInNewContext(srcCombat.replace(
+    '  return { tick, resolve, ghostCast, ghostOrbit,',
+    '  return { __hit: hit, tick, resolve, ghostCast, ghostOrbit,'
+  ), context);
+  const e = {
+    hp: 12, shield: 6, types: ['normal'], remote: false,
+    hurt(amount) {
+      let v = amount;
+      if (this.shield > 0) {
+        const absorbed = Math.min(v, this.shield);
+        this.shield -= absorbed; v -= absorbed;
+      }
+      this.hp -= v;
+    },
+    applyBurn() {}, applyPoison() {}, applySlow() {}
+  };
+  pl.onDealt = () => {};
+  G.Combat.__hit(pl, e, 9, '#fff', 0, 0, 0, pl.moves[0]);
+  assert.equal(G.CombatStats.damage(), 3, 'no suma la absorción del escudo');
+  G.Combat.__hit(pl, e, 20, '#fff', 0, 0, 0, pl.moves[0]);
+  assert.equal(G.CombatStats.damage(), 12, 'no suma overkill');
+  assert.equal(pl.dmgDealt, 29, 'el contador original no se cambia');
+});
