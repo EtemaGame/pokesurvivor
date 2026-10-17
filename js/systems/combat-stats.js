@@ -91,6 +91,39 @@ G.CombatStats = (() => {
     return s;
   }
 
+  /** Resumen de tres cifras para elegir una carta sin leer párrafos técnicos. */
+  function cardBrief(card, pl) {
+    if (!card || !pl || !card.key) return '';
+    const [kind, id] = card.key.split(':');
+    const metric = (label, value) => '<span class="lab-metric"><small>' + label +
+      '</small><strong>' + value + '</strong></span>';
+    const stats = {
+      atk: () => metric('Ataque', dec(pl.atk) + ' → ' + dec(pl.atk * 1.10)),
+      spd: () => metric('Velocidad', dec(pl.spd) + ' → ' + dec(pl.spd * 1.07)),
+      cd: () => metric('Recarga global', '×' + dec(pl.cdMul) + ' → ×' + dec(pl.cdMul * .92)),
+      def: () => metric('Reduce daño', dec(pl.reduction * 100) + '% → ' +
+        dec(Math.min(.8, Math.min(.7, pl.dmgReduce + .06) +
+          pl.buffs.def.n * pl.buffs.def.amount) * 100) + '%')
+    };
+    if (kind === 'stat') return stats[id] ? '<div class="lab-card-metrics">' + stats[id]() + '</div>' : '';
+    const existing = pl.moves.find(m => m.id === id);
+    let preview = existing && Object.assign({}, existing);
+    if (kind === 'new') preview = G.Moves.instance(id);
+    else if (kind === 'up' && preview) G.Moves.levelUp(preview);
+    else if (kind === 'evo' && preview) G.Moves.evolve(preview);
+    if (!preview) return '';
+    const before = theoretical(existing, pl);
+    const after = theoretical(preview, pl);
+    if (!after) return '';
+    const delta = (oldValue, newValue, format) => oldValue != null && Math.abs(oldValue - newValue) > .00001
+      ? format(oldValue) + ' → ' + format(newValue) : format(newValue);
+    let out = metric('Daño / golpe', delta(before && before.damage, after.damage, fmt)) +
+      metric('DPS*', delta(before && before.dps, after.dps, dec)) +
+      metric('Cada', delta(before && before.cd, after.cd, dec) + ' s');
+    if (after.hex > 1) out += metric('Con estado', '+' + dec((after.hex - 1) * 100) + '% daño');
+    return '<div class="lab-card-metrics">' + out + '</div>';
+  }
+
   function cardInfo(card, pl) {
     if (!card || !pl || !card.key) return '';
     const [kind, id] = card.key.split(':');
@@ -129,50 +162,78 @@ G.CombatStats = (() => {
   }
 
   function render(s, pl, full = true) {
-    const line = (a,b) => '<div style="display:flex;justify-content:space-between;gap:12px"><span>' + a +
-      '</span><b>' + b + '</b></div>';
-    let out = '<section style="text-align:left;font-size:13px;line-height:1.65">' +
-      '<h3 style="margin:6px 0">Análisis de combate</h3>' +
-      line('Daño efectivo registrado', fmt(s.total)) +
-      line('Impactos directos', fmt(s.direct)) + line('Quemadura / veneno', fmt(s.periodic)) +
-      line('DPS medio desde el inicio', dec(s.dps)) +
-      line('Impactos directos acertados', fmt(s.hits));
-    if (full) {
-      out += '<h4 style="margin:12px 0 4px">Tus estadísticas efectivas</h4>' +
-        line('Ataque', dec(s.attack)) + line('Defensa · reducción', dec(s.defense * 100) + '%') +
-        line('Velocidad de movimiento', dec(s.speed) + ' u/s') +
-        line('Recarga global', '×' + dec(s.cooldown)) +
-        line('Crítico', dec(s.crit * 100) + '%') +
-        line('Regeneración', dec(s.regen) + ' PS/s');
-    }
+    const line = (label, value) => '<div class="lab-stat"><span>' + label +
+      '</span><b>' + value + '</b></div>';
+    let out = '<section class="lab-analytics">' +
+      '<h3>Análisis de combate</h3>' +
+      '<div class="lab-kpis">' +
+      '<div><small>Daño total</small><strong>' + fmt(s.total) + '</strong></div>' +
+      '<div><small>DPS medio</small><strong>' + dec(s.dps) + '</strong></div>' +
+      '<div><small>Impactos</small><strong>' + fmt(s.hits) + '</strong></div>' +
+      '</div>';
+    if (s.periodic) out += '<p class="lab-muted">Incluye ' + fmt(s.periodic) +
+      ' de quemadura o veneno. Daño directo: ' + fmt(s.direct) + '.</p>';
+
     if (s.team.length > 1) {
-      out += '<h4 style="margin:12px 0 4px">Daño por jugador (informado por cada cliente)</h4>';
-      for (const p of s.team) out += line(esc(p.name) + (p.own ? ' (tú)' : ''), fmt(p.damage));
+      out += '<h4>Daño por jugador</h4><div class="lab-players">';
+      for (const p of s.team)
+        out += line(esc(p.name) + (p.own ? ' (tú)' : ''), fmt(p.damage));
+      out += '</div>';
     }
-    out += '<h4 style="margin:12px 0 4px">Daño por habilidad</h4>';
+
+    out += '<h4>Daño por habilidad</h4><div class="lab-skills">';
     for (const row of s.moves) {
       const m = pl && pl.moves.find(x => x.id === row.id) || G.Moves.BY_ID[row.id];
-      out += '<div style="padding:6px 0;border-bottom:1px solid #ffffff22"><b>' + esc(row.name) + '</b>' +
-        '<div>' + fmt(row.damage) + ' daño · ' + fmt(row.hits) + ' impactos · ' + dec(row.dps) + ' DPS medio' +
-        (row.periodic ? ' · ' + fmt(row.periodic) + ' por estados (' +
-          fmt(row.burn) + ' quemadura, ' + fmt(row.poison) + ' veneno)' : '') + '</div>' +
-        (full && m ? '<div class="sub" style="font-size:12px">' + details(m, pl) + '</div>' : '') +
-        '</div>';
+      const percent = s.total > 0 ? Math.min(100, Math.max(0, row.damage / s.total * 100)) : 0;
+      out += '<article class="lab-skill">' +
+        '<div class="lab-skill-head"><strong>' + esc(row.name) +
+        '</strong><b>' + fmt(row.damage) + '</b></div>' +
+        '<div class="lab-track" role="meter" aria-label="Porcentaje de daño" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
+          Math.round(percent) + '"><div class="lab-fill" style="width:' + percent.toFixed(2) + '%"></div></div>' +
+        '<div class="lab-skill-meta">' + dec(percent) + '% del daño · ' +
+          fmt(row.hits) + ' impactos · ' + dec(row.dps) + ' DPS</div>';
+      if (row.periodic)
+        out += '<div class="lab-muted">Por estados: ' + fmt(row.periodic) +
+          ' (' + fmt(row.burn) + ' quemadura, ' + fmt(row.poison) + ' veneno)</div>';
+      if (full && m)
+        out += '<details class="lab-details"><summary>Ver datos y efectos</summary><div class="lab-detail-text">' +
+          details(m, pl) + '</div></details>';
+      out += '</article>';
     }
-    if (!s.moves.length) out += '<p class="sub">Todavía no hay daño atribuido a habilidades.</p>';
-    if (full && pl) {
-      const unseen = pl.moves.filter(m => !byMove[m.id]);
-      if (unseen.length) out += '<h4 style="margin:12px 0 4px">Otras habilidades equipadas</h4>' +
-        unseen.map(m => '<div style="padding:5px 0"><b>' + esc(m.name) + '</b><div class="sub" style="font-size:12px">' +
-          details(m, pl) + '</div></div>').join('');
+    if (!s.moves.length) out += '<p class="lab-muted">Aún no hay daño registrado.</p>';
+    out += '</div>';
+
+    if (full) {
+      out += '<details class="lab-details lab-section"><summary>Estadísticas del Pokémon</summary>' +
+        '<div class="lab-stat-list">' +
+        line('Ataque', dec(s.attack)) +
+        line('Reducción de daño', dec(s.defense * 100) + '%') +
+        line('Velocidad', dec(s.speed) + ' u/s') +
+        line('Recarga global', '×' + dec(s.cooldown)) +
+        line('Probabilidad de crítico', dec(s.crit * 100) + '%') +
+        line('Regeneración', dec(s.regen) + ' PS/s') +
+        '</div></details>';
+      if (pl) {
+        const unseen = pl.moves.filter(m => !byMove[m.id]);
+        if (unseen.length) {
+          out += '<details class="lab-details lab-section"><summary>Otras habilidades (' + unseen.length + ')</summary>';
+          for (const m of unseen)
+            out += '<div class="lab-other"><strong>' + esc(m.name) + '</strong>' +
+              '<div class="lab-detail-text">' + details(m, pl) + '</div></div>';
+          out += '</details>';
+        }
+      }
+      out += '<details class="lab-details lab-section"><summary>¿Cómo se calcula?</summary>' +
+        '<p class="lab-detail-text">Daño total = vida que han perdido los enemigos por tus habilidades; ' +
+        'no se cuentan escudos ni daño sobrante. El DPS medio divide ese daño entre el tiempo de la ronda. ' +
+        'La quemadura y el veneno se atribuyen a la última habilidad local que aplicó cada estado. ' +
+        'No incluye daño ambiental. Los números teóricos de las habilidades suponen un enemigo neutro, ' +
+        'sin clima, y un impacto por activación; los proyectiles múltiples, aciertos y áreas ' +
+        'pueden cambiar mucho el resultado. En cooperativo las cifras contra enemigos remotos son estimadas, ' +
+        'y cada compañero informa de su propio daño.</p></details>';
     }
-    return out + '<p class="sub" style="font-size:11px;margin:10px 0 0">El DPS medio es daño efectivo registrado / tiempo de ronda. ' +
-      'El daño de quemadura y veneno se atribuye al último movimiento local que aplicó cada estado. ' +
-      'No incluye daño ambiental ni efectos remotos sin autor conocido. El DPS teórico supone un impacto ' +
-      'constante sobre un enemigo neutro, sin clima, y no predice aciertos ni objetivos múltiples. ' +
-      'En cooperativo, el daño en enemigos remotos es una estimación del cliente, y los totales ' +
-      'de otros jugadores son los que informa cada uno.</p></section>';
+    return out + '</section>';
   }
 
-  return { reset, note, damage, snapshot, theoretical, details, cardInfo, html, render, fmt, dec };
+  return { reset, note, damage, snapshot, theoretical, details, cardInfo, cardBrief, html, render, fmt, dec };
 })();
