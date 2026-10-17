@@ -110,6 +110,7 @@ test('intercepción de impactos no cambia daño: golpe directo sin dobles cuenta
     applyBurn() {}, applyPoison() {}, applySlow() {}
   };
   pl.onDealt = () => {};
+  pl.critChance = 0; // determinista: los críticos reales se ensayan por separado
   const move = pl.moves[0];
   G.CombatStats.reset();
   G.Combat.__hit(pl, enemy, 20, '#fff', 0, 0, 0, move);
@@ -242,6 +243,7 @@ test('en móvil el botón de detalles no elige la carta por accidente', () => {
 
 test('las cartas muestran datos sin prometer DPS ni suponer aciertos de proyectiles', () => {
   const { G, pl } = fixture();
+  pl.moves = [G.Moves.instance('hex')]; // ember es una carta realmente nueva
   const b = G.CombatStats.cardBrief({ key: 'new:ember' }, pl);
   assert.ok(b.includes('Daño base / golpe'));
   assert.ok(b.includes('Proyectiles'));
