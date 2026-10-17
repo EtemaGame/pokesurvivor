@@ -185,7 +185,7 @@ test('la carta muestra tres números claros y deja el detalle bajo demanda', () 
   pl.moves = [G.Moves.instance('ember', 2)]; // siguiente nivel aumenta el daño
   const summary = G.CombatStats.cardBrief({ key: 'new:hex' }, pl);
   assert.ok(summary.includes('Daño / golpe'));
-  assert.ok(summary.includes('DPS*'));
+  assert.ok(summary.includes('DPS teórico'));
   assert.ok(summary.includes('Cada'));
   assert.ok(summary.includes('Con estado'));
   assert.ok(summary.includes('+70% daño'));
