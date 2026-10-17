@@ -526,18 +526,32 @@ G.Combat = (() => {
   const CRIT_MUL = 1.5;
   const isCrit = pl => !ghost && pl.critChance > 0 && Math.random() < pl.critChance;
 
+  // Los escudos y el daño sobrante no se cuentan como PS perdidos. En copias
+  // remotas la cifra es una estimación: sólo el host conoce el resultado final.
+  function actualDamage(e, before, requested) {
+    if (e.remote || !Number.isFinite(before) || !Number.isFinite(e.hp)) return requested;
+    return Math.max(0, before - Math.max(0, e.hp));
+  }
+
   function hit(pl, e, dmg, col, dx, dy, knock, m) {
     const k = typeK(m.type, e);
     const crit = isCrit(pl);
     dmg *= k * (crit ? CRIT_MUL : 1);
+    const hpBefore = e.hp;
     e.hurt(dmg, col, dx, dy, knock, crit ? 'crit' : G.Types.label(G.Types.mult(m.type, e.types)));
     if (!ghost) {
       pl.onDealt(dmg);
-      if (G.CombatStats) G.CombatStats.note(pl, m.id, dmg);
+      if (G.CombatStats) G.CombatStats.note(pl, m.id, actualDamage(e, hpBefore, dmg));
     }
     pl.dmgDealt += dmg;
-    if (m.burn) e.applyBurn(m.burn);
-    if (m.poison) e.applyPoison(m.poison);
+    if (m.burn) {
+      e.applyBurn(m.burn);
+      if (!ghost && !e.remote) e.labBurn = { pl, id: m.id };
+    }
+    if (m.poison) {
+      e.applyPoison(m.poison);
+      if (!ghost && !e.remote) e.labPoison = { pl, id: m.id };
+    }
     if (m.slow) e.applySlow(m.slow);
   }
 
@@ -640,14 +654,21 @@ G.Combat = (() => {
 
         const crit = isCrit(pl);
         const k = (p.mtype ? typeK(p.mtype, e) : 1) * (crit ? CRIT_MUL : 1);
+        const hpBefore = e.hp;
         e.hurt(p.dmg * k, p.color, p.vx || (e.x - pl.x), p.vy || (e.y - pl.y), p.knock,
                crit ? 'crit' : p.mtype ? G.Types.label(G.Types.mult(p.mtype, e.types)) : null);
         if (Math.random() < 0.5) G.FX.sp('impact', p.vis ? p.vis.pal : 'normal', e.x, e.y - e.bodyH * 0.5, { life: 0.12, scale: 1 });
         pl.dmgDealt += p.dmg * k;
         pl.onDealt(p.dmg * k);
-        if (G.CombatStats) G.CombatStats.note(pl, p.mid, p.dmg * k);
-        if (p.burn) e.applyBurn(p.burn);
-        if (p.poison) e.applyPoison(p.poison);
+        if (G.CombatStats) G.CombatStats.note(pl, p.mid, actualDamage(e, hpBefore, p.dmg * k));
+        if (p.burn) {
+          e.applyBurn(p.burn);
+          if (!e.remote) e.labBurn = { pl, id: p.mid };
+        }
+        if (p.poison) {
+          e.applyPoison(p.poison);
+          if (!e.remote) e.labPoison = { pl, id: p.mid };
+        }
         if (p.slow) e.applySlow(p.slow);
 
         if (!p.orb) {
