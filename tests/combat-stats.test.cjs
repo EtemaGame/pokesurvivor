@@ -181,7 +181,7 @@ test('la medición respeta escudos y vida restante sin alterar el daño base del
 
 test('la carta muestra tres números claros y deja el detalle bajo demanda', () => {
   const { G, pl } = fixture();
-  pl.moves = [G.Moves.instance('ember')];
+  pl.moves = [G.Moves.instance('ember', 2)]; // siguiente nivel aumenta el daño
   const summary = G.CombatStats.cardBrief({ key: 'new:hex' }, pl);
   assert.ok(summary.includes('Daño / golpe'));
   assert.ok(summary.includes('DPS*'));
