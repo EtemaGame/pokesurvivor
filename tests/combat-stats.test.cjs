@@ -178,3 +178,59 @@ test('la medición respeta escudos y vida restante sin alterar el daño base del
   assert.equal(G.CombatStats.damage(), 12, 'no suma overkill');
   assert.equal(pl.dmgDealt, 29, 'el contador original no se cambia');
 });
+
+test('la carta muestra tres números claros y deja el detalle bajo demanda', () => {
+  const { G, pl } = fixture();
+  pl.moves = [G.Moves.instance('ember')];
+  const summary = G.CombatStats.cardBrief({ key: 'new:hex' }, pl);
+  assert.ok(summary.includes('Daño / golpe'));
+  assert.ok(summary.includes('DPS*'));
+  assert.ok(summary.includes('Cada'));
+  assert.ok(summary.includes('Con estado'));
+  assert.ok(summary.includes('+70% daño'));
+  assert.ok(!summary.includes('Comparación:'), 'el resumen no debe ser un párrafo largo');
+  const up = G.CombatStats.cardBrief({ key: 'up:ember' }, pl);
+  assert.ok(up.includes('→'), 'la mejora compara antes y después');
+  const def = G.CombatStats.cardBrief({ key: 'stat:def' }, pl);
+  assert.ok(def.includes('Reduce daño'));
+  assert.ok(G.CombatStats.cardBrief({ key: 'stat:spd' }, pl).includes('Velocidad'));
+});
+
+test('la torreta usa la velocidad real de disparo para comparar, no el tiempo de colocación', () => {
+  const { G, pl } = fixture();
+  const turret = G.Moves.instance('will-o-wisp');
+  const numbers = G.CombatStats.theoretical(turret, pl);
+  assert.equal(numbers.cd, turret.rate);
+  assert.equal(numbers.dps, turret.dmg * pl.atk * 1.05 / turret.rate);
+});
+
+test('el informe prioriza daño, DPS e impactos y permite desplegar explicaciones', () => {
+  const { G, pl } = fixture();
+  G.CombatStats.reset();
+  G.CombatStats.note(pl, 'ember', 80);
+  G.CombatStats.note(pl, 'hex', 20);
+  G.CombatStats.note(pl, 'ember', 5, 'burn');
+  const html = G.CombatStats.html(pl, 10, [pl]);
+  assert.ok(html.includes('lab-kpis'));
+  assert.ok(html.includes('Daño total'));
+  assert.ok(html.includes('DPS medio'));
+  assert.ok(html.includes('Impactos'));
+  assert.ok(html.includes('lab-track'));
+  assert.ok(html.includes('Daño por habilidad'));
+  assert.ok(html.includes('<details'), 'el detalle no debe ocupar espacio inicialmente');
+  assert.ok(html.includes('Estadísticas del Pokémon'));
+  assert.ok(html.includes('¿Cómo se calcula?'));
+  assert.ok(html.includes('Por estados:'));
+  assert.ok(!html.includes('Impactos directos</span>'), 'no confundir daño con número de golpes');
+});
+
+test('en móvil el botón de detalles no elige la carta por accidente', () => {
+  const run = src('js/ui/run-ui.js');
+  const css = src('css/style.css');
+  assert.ok(run.includes('G.CombatStats.cardBrief'));
+  assert.ok(run.includes('e.stopPropagation()'));
+  assert.ok(run.includes('aria-expanded'));
+  assert.ok(run.includes('info.hidden = !expanded'));
+  assert.ok(css.includes('.lab-card-detail[hidden]'));
+  assert.ok(css.includes('@media (max-height: 520px)'));
+});
