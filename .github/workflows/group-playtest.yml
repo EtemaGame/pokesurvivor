@@ -6,6 +6,7 @@ on:
       - fix/lab-party-and-resume-slow
       - fix/lab-coop-room-creation
       - feat/lab-combat-analytics
+      - feat/lab-combat-clarity
   workflow_dispatch:
 
 concurrency:
