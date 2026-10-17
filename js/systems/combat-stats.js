@@ -46,7 +46,7 @@ G.CombatStats = (() => {
       cooldown: pl ? pl.cdMul : 1, crit: pl ? pl.critChance : 0,
       team: (team || []).map(p => ({
         name: p.uid && p.tag ? p.tag : p === pl ? ((G.Social.me || {}).name || 'Tú') : (p.tag || 'Compañero'),
-        damage: num(p.dmgDealt),
+        damage: p === pl ? total : num(p.dmgDealt),
         uid: p.uid || '',
         own: p === pl
       })).sort((a,b) => b.damage - a.damage)
