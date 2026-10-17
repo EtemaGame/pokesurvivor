@@ -172,6 +172,7 @@ test('la medición respeta escudos y vida restante sin alterar el daño base del
     applyBurn() {}, applyPoison() {}, applySlow() {}
   };
   pl.onDealt = () => {};
+  pl.critChance = 0; // aislar el escudo del crítico aleatorio
   G.Combat.__hit(pl, e, 9, '#fff', 0, 0, 0, pl.moves[0]);
   assert.equal(G.CombatStats.damage(), 3, 'no suma la absorción del escudo');
   G.Combat.__hit(pl, e, 20, '#fff', 0, 0, 0, pl.moves[0]);
