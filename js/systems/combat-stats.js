@@ -123,7 +123,7 @@ G.CombatStats = (() => {
     const delta = (oldValue, newValue, format) => oldValue != null && Math.abs(oldValue - newValue) > .00001
       ? format(oldValue) + ' → ' + format(newValue) : format(newValue);
     let out = metric('Daño / golpe', delta(before && before.damage, after.damage, fmt)) +
-      metric('DPS*', delta(before && before.dps, after.dps, dec)) +
+      metric('DPS teórico', delta(before && before.dps, after.dps, dec)) +
       metric('Cada', delta(before && before.cd, after.cd, dec) + ' s');
     if (after.hex > 1) out += metric('Con estado', '+' + dec((after.hex - 1) * 100) + '% daño');
     return '<div class="lab-card-metrics">' + out + '</div>';
