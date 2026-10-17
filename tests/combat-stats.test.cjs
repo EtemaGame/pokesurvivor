@@ -254,3 +254,23 @@ test('las cartas muestran datos sin prometer DPS ni suponer aciertos de proyecti
   assert.ok(G.CombatStats.html(pl, 10, [pl]).includes('DPS medio'),
     'el DPS medido durante la ronda sí debe conservarse en el informe');
 });
+
+test('las mejoras de alcance aparecen en la tarjeta sin DPS especulativo', () => {
+  const { G, pl } = fixture();
+  pl.moves = [G.Moves.instance('tackle', 2)];
+  const brief = G.CombatStats.cardBrief({ key: 'up:tackle' }, pl);
+  assert.ok(brief.includes('Alcance'), 'debe destacar la mejora de alcance');
+  assert.ok(brief.includes('→'), 'debe mostrar el cambio');
+  assert.ok(!brief.includes('DPS'), 'no hay DPS teórico en las cartas');
+  const details = G.CombatStats.cardInfo({ key: 'up:tackle' }, pl);
+  assert.ok(details.includes('obstáculos'), 'aclara que no se garantiza el recorrido');
+});
+
+test('las mejoras de proyectiles destacan su cantidad, no una predicción de impactos', () => {
+  const { G, pl } = fixture();
+  pl.moves = [G.Moves.instance('ember', 1)];
+  const brief = G.CombatStats.cardBrief({ key: 'up:ember' }, pl);
+  assert.ok(brief.includes('Proyectiles'));
+  assert.ok(brief.includes('1 → 2'));
+  assert.ok(!brief.includes('DPS'));
+});
