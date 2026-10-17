@@ -99,3 +99,84 @@ test('la pantalla Amigos ofrece Invitar a un amigo confirmado aunque no esté on
   const buttons = nodes.get('fr-list').children[0].children.map(n => n.textContent);
   assert.ok(buttons.includes('Invitar'), 'No ocultar el botón por presencia caducada');
 });
+
+test('crear sala explícitamente funciona sin amigos y una sola vez con solicitudes simultáneas', async () => {
+  const x = socialFixture();
+  const [a, b] = await Promise.all([x.G.Social.createRoom(), x.G.Social.createRoom()]);
+  assert.equal(a.id, 'unpredictable-room-id');
+  assert.equal(b.id, a.id);
+  assert.equal(x.writes.filter(w => w.path === 'rooms/unpredictable-room-id').length, 1);
+  assert.equal(x.G.Social.room.isHost, true);
+});
+
+test('si falla crear sala directamente, devuelve permiso denegado y apaga Realtime Database', async () => {
+  const x = socialFixture(true);
+  await assert.rejects(x.G.Social.createRoom(), e => e && e.code === 'PERMISSION_DENIED');
+  assert.equal(x.G.Social.room, null);
+  assert.ok(x.events.includes('offline'));
+});
+
+function friendsScreenFixture(makeRoom = async () => {}) {
+  const nodes = new Map();
+  const node = () => ({
+    children: [], style: {}, dataset: {}, textContent: '', disabled: false,
+    classList: {
+      classes: new Set(),
+      toggle(name, flag) { if (flag) this.classes.add(name); else this.classes.delete(name); },
+      add(name) { this.classes.add(name); },
+      remove(name) { this.classes.delete(name); },
+      contains(name) { return this.classes.has(name); }
+    },
+    set innerHTML(v) { this.html = v; this.children.length = 0; },
+    get innerHTML() { return this.html || ''; },
+    appendChild(el) { this.children.push(el); }
+  });
+  const $ = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
+  let opened = 0, calls = 0;
+  const G = {
+    UI: { $, isOpen: () => true },
+    DB: { online: true },
+    Social: {
+      me: { name: 'Anfitrion' }, friends: [], room: null,
+      now: () => Date.now(), refreshPresence() {}, on() {},
+      createRoom() { calls++; return makeRoom(); }
+    },
+    Audio: { sfx() {} }
+  };
+  vm.runInNewContext(src('js/ui/social-ui.js'), { G, document: { createElement: node }, window: {} });
+  G.LobbyUI.open = () => { opened++; };
+  G.FriendsUI.init();
+  G.FriendsUI.render();
+  return { G, node: $, get calls() { return calls; }, get opened() { return opened; } };
+}
+
+test('Amigos muestra Crear sala incluso sin amigos; al pulsar abre la sala', async () => {
+  const x = friendsScreenFixture();
+  assert.equal(x.node('fr-create').classList.contains('hidden'), false);
+  assert.equal(x.node('fr-room').classList.contains('hidden'), true);
+  await x.node('fr-create').onclick();
+  assert.equal(x.calls, 1);
+  assert.equal(x.opened, 1);
+  assert.equal(x.node('fr-create').disabled, false);
+});
+
+test('Crear sala informa errores reales, no abre lobby y deja reintentar', async () => {
+  const x = friendsScreenFixture(async () => { throw { code: 'PERMISSION_DENIED' }; });
+  await x.node('fr-create').onclick();
+  assert.match(x.node('fr-msg').textContent, /PERMISSION_DENIED/);
+  assert.equal(x.opened, 0);
+  assert.equal(x.node('fr-create').disabled, false);
+});
+
+test('Crear sala bloquea pulsaciones duplicadas durante una subida lenta', async () => {
+  let release;
+  const x = friendsScreenFixture(() => new Promise(resolve => { release = resolve; }));
+  const first = x.node('fr-create').onclick();
+  await x.node('fr-create').onclick();
+  assert.equal(x.calls, 1);
+  assert.equal(x.node('fr-create').disabled, true);
+  release({});
+  await first;
+  assert.equal(x.node('fr-create').disabled, false);
+  assert.equal(x.opened, 1);
+});
