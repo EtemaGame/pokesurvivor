@@ -308,13 +308,26 @@ G.Social = (() => {
   function rtOn() { if (fb.rtdb) fb.rtdb.goOnline(); }
   function rtOff() { if (fb && fb.rtdb && !room) fb.rtdb.goOffline(); }
 
+  let creatingRoom = null;
   async function createRoom() {
     if (room) return room;
-    rtOn();
-    const id = fb.rtdb.ref('rooms').push().key;
-    await fb.rtdb.ref('rooms/' + id).set({ host: uid, open: true, at: ts(), m: { [uid]: memberInfo() } });
-    enterRoom(id, uid);
-    return room;
+    // Una única sala incluso si se pulsa dos veces o una invitación llega
+    // mientras todavía se está creando.
+    if (creatingRoom) return creatingRoom;
+    creatingRoom = (async () => {
+      try {
+        rtOn();
+        const id = fb.rtdb.ref('rooms').push().key;
+        await fb.rtdb.ref('rooms/' + id).set({ host: uid, open: true, at: ts(), m: { [uid]: memberInfo() } });
+        enterRoom(id, uid);
+        return room;
+      } catch (e) {
+        if (!room) rtOff();
+        throw e;
+      }
+    })();
+    try { return await creatingRoom; }
+    finally { creatingRoom = null; }
   }
 
   async function joinRoom(id) {
