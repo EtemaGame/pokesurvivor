@@ -145,10 +145,12 @@
     }
     applyBurn(stacks = 1) {
       if (this.remote) { G.Coop.status(this, 'b', stacks); return; }
+      this.labBurn = null; // autor desconocido hasta que el golpe local lo atribuya
       this.burn = Math.min(8, this.burn + stacks); this.burnT = 3;
     }
     applyPoison(stacks = 1) {
       if (this.remote) { G.Coop.status(this, 'p', stacks); return; }
+      this.labPoison = null;
       this.poison = Math.min(8, this.poison + stacks); this.poisonT = 4;
     }
 
@@ -254,12 +256,26 @@
       if (this.slowT > 0) { this.slowT -= dt; if (this.slowT <= 0) this.slow = 0; }
       if (this.burn > 0) {
         this.burnT -= dt; this.burnTick -= dt;
-        if (this.burnTick <= 0) { this.burnTick = 0.5; this.hurt(1.6 * this.burn * (1 + pl.level * 0.06), '#ff9a4d'); }
+        if (this.burnTick <= 0) {
+          this.burnTick = 0.5;
+          const before = this.hp;
+          this.hurt(1.6 * this.burn * (1 + pl.level * 0.06), '#ff9a4d');
+          if (G.CombatStats && this.labBurn)
+            G.CombatStats.note(this.labBurn.pl, this.labBurn.id,
+              Math.max(0, before - Math.max(0, this.hp)), 'burn');
+        }
         if (this.burnT <= 0) this.burn = 0;
       }
       if (this.poison > 0) {
         this.poisonT -= dt; this.poisonTick -= dt;
-        if (this.poisonTick <= 0) { this.poisonTick = 0.6; this.hurt(this.maxHp * 0.012 * this.poison + 1, '#d47cf0'); }
+        if (this.poisonTick <= 0) {
+          this.poisonTick = 0.6;
+          const before = this.hp;
+          this.hurt(this.maxHp * 0.012 * this.poison + 1, '#d47cf0');
+          if (G.CombatStats && this.labPoison)
+            G.CombatStats.note(this.labPoison.pl, this.labPoison.id,
+              Math.max(0, before - Math.max(0, this.hp)), 'poison');
+        }
         if (this.poisonT <= 0) this.poison = 0;
       }
       if (this.dead) return;
