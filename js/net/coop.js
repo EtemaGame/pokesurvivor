@@ -135,7 +135,7 @@ G.Coop = (() => {
     return [r1(local.x), r1(local.y), r2(local.moveAngle), local.walking ? 1 : 0, r1(local.hp), r1(local.maxHp),
             local.dead ? 1 : 0, m ? m.id : '', m ? m.lvl : 1, r1(local.magnet), r2(local.aim), r2(local.xpMul),
             r2(local.reviveT || 0), api.choosing && api.choosing() ? 1 : 0, doneSeq,
-            r1(local.dmgDealt)];
+            r1(G.CombatStats ? G.CombatStats.damage() : local.dmgDealt)];
   }
 
   function readState(a) {
