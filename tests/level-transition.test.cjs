@@ -26,6 +26,7 @@ function uiFixture() {
     get innerHTML() { return this._html || ''; }
     appendChild(el) { this.children.push(el); }
     querySelectorAll() { return this.children; }
+    querySelector() { return null; } // sin analítica en este mock de UI
   }
   const get = id => {
     if (!nodes.has(id)) nodes.set(id, new Element());
