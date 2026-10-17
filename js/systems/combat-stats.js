@@ -65,7 +65,9 @@ G.CombatStats = (() => {
     const cd = Math.max(0.05, m.cd * (pl ? pl.cdMul : 1) * cdK);
     // Las órbitas usan directamente m.cd como intervalo de cada orbe,
     // sin aplicar pl.cdMul (ver combat.js).
-    const period = m.kind === 'orbit' ? Math.max(0.12, m.cd) : cd;
+    // Las torretas disparan según rate, no según la recarga para colocarlas.
+    const period = m.kind === 'orbit' ? Math.max(0.12, m.cd)
+      : m.kind === 'turret' ? Math.max(0.05, m.rate || 0.6) : cd;
     const dps = damage / period;
     return { damage, cd: period, dps, count: Math.max(1, m.count || 1),
       multi: ['projectile', 'nova', 'boomerang', 'cone', 'orbit', 'chain', 'mine', 'meteor'].includes(m.kind),
@@ -76,13 +78,16 @@ G.CombatStats = (() => {
   function details(m, pl) {
     const a = theoretical(m, pl);
     if (!a) return '<span class="sub">Potenciador: no inflige daño directo.</span>';
-    let s = '<span>Golpe neutro esperado: <b>' + fmt(a.damage) +
-      '</b> · Cadencia: <b>' + dec(a.cd) + ' s</b> · DPS por impacto: <b>' + dec(a.dps) + '</b></span>';
-    if (a.multi) s += '<span class="sub"> · ' + a.count + ' ' +
-      (a.kind === 'chain' ? 'saltos máx.' : 'proyectiles/orbes/zonas máx.') +
-      ' (no garantiza impactos)</span>';
-    if (a.hex) s += '<div>Enemigo quemado, envenenado o ralentizado: <b>×' +
-      dec(a.hex) + ' (' + fmt(a.damage * a.hex) + ' por primer golpe)</b></div>';
+    let s = '<div>Daño por impacto, objetivo neutro: <b>' + fmt(a.damage) + '</b></div>' +
+      '<div>' + (m.kind === 'turret' ? 'Disparo de torreta cada: ' : 'Un ataque cada: ') +
+      '<b>' + dec(a.cd) + ' s</b></div>' +
+      '<div>DPS teórico por impacto: <b>' + dec(a.dps) + '</b></div>';
+    if (a.multi) s += '<div>Máximo por activación: <b>' + a.count + ' ' +
+      (a.kind === 'chain' ? 'saltos' : 'proyectiles/orbes/zonas') +
+      '</b> (no significa que todos impacten).</div>';
+    if (a.hex) s += '<div>Contra quemados, envenenados o lentos: <b>×' +
+      dec(a.hex) + ' (+' + dec((a.hex - 1) * 100) + '%; ' +
+      fmt(a.damage * a.hex) + ' por primer impacto)</b></div>';
     if (m.burn) s += '<div>Quemadura: ' + m.burn + ' carga(s) por impacto; ' +
       '1,6 × cargas × (1 + nivel del jugador × 0,06) cada 0,5 s.</div>';
     if (m.poison) s += '<div>Veneno: ' + m.poison + ' carga(s) por impacto; ' +
@@ -144,17 +149,23 @@ G.CombatStats = (() => {
     const old = theoretical(existing, pl), cur = theoretical(m, pl);
     if (!cur) return 'Potenciador sin daño directo.';
     const cmp = old ? ' → ' + fmt(cur.damage) : '';
-    let txt = 'Golpe neutro esperado: ' + (old ? fmt(old.damage) + cmp : fmt(cur.damage)) +
-      ' · DPS/impacto: ' + (old ? dec(old.dps) + ' → ' : '') + dec(cur.dps);
-    if (cur.multi) txt += ' · Hasta ' + cur.count + ' disparos/objetivos (sin garantía de impactos)';
-    if (cur.hex) txt += ' · Con estado: ×' + dec(cur.hex) + ' = ' + fmt(cur.damage * cur.hex);
+    let txt = '<div>Golpe neutro esperado: <b>' +
+      (old ? fmt(old.damage) + cmp : fmt(cur.damage)) + '</b></div>' +
+      '<div>DPS/impacto teórico: <b>' + (old ? dec(old.dps) + ' → ' : '') +
+      dec(cur.dps) + '</b></div>';
+    if (cur.multi) txt += '<div>Hasta ' + cur.count +
+      ' disparos/objetivos por activación (sin garantía de impacto).</div>';
+    if (cur.hex) txt += '<div>Con estado: ×' + dec(cur.hex) + ' = ' +
+      fmt(cur.damage * cur.hex) + ' por primer impacto.</div>';
     // Referencia útil, no decisión automática: el daño real depende de aciertos,
     // tipos, resistencias, escudos, movilidad y número de enemigos.
     const reference = pl.moves.filter(x => x.id !== id)
       .map(x => ({ x, a: theoretical(x, pl) })).filter(v => v.a)
       .sort((a,b) => b.a.dps - a.a.dps)[0];
-    if (reference) txt += ' · Comparación: ' + reference.x.name + ' ' + dec(reference.a.dps) + ' DPS/impacto';
-    return txt;
+    if (reference) txt += '<div>Otro ataque: ' + esc(reference.x.name) + ' · <b>' +
+      dec(reference.a.dps) + ' DPS/impacto teórico</b>.</div>';
+    return txt + '<div class="lab-muted">*Valores para un objetivo neutro y un impacto ' +
+      'por activación. No predicen el daño real cuando hay múltiples proyectiles o áreas.</div>';
   }
 
   function html(pl, seconds, team, full = true) {
