@@ -842,3 +842,79 @@ a.btn { text-decoration: none; display: inline-block; color: var(--ink); }
   #dex-detail .btn { position: sticky; bottom: 0; order: 9; margin-top: auto; padding: 8px 6px; font-size: 15px;
     box-shadow: 0 -6px 10px rgba(5,10,25,.6); }
 }
+
+/* ---------- Laboratorio: estadísticas legibles y detalles opcionales ---------- */
+.lab-card-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; text-shadow: none; }
+.lab-metric {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 5px 9px; border: 1px solid rgba(125,226,217,.3); border-radius: 8px;
+  background: rgba(20,79,94,.23); font-size: 14px; line-height: 1.25;
+}
+.lab-metric small { color: #bcd5e0; font-size: 11px; }
+.lab-metric strong { color: #a8fff0; font-size: 14px; }
+.lab-more {
+  display: block; cursor: pointer; padding: 5px 0; margin-top: 4px;
+  background: transparent; border: 0; color: #bfdff6; font-size: 12px;
+  text-decoration: underline; text-underline-offset: 3px; text-align: left;
+}
+.lab-more:focus-visible, .lab-details summary:focus-visible { outline: 2px solid #a8fff0; outline-offset: 2px; }
+.lab-card-detail {
+  padding: 8px 10px; margin: 3px 0 0; border-left: 2px solid #80cbd0;
+  background: rgba(0,0,0,.2); color: #d3e2f2;
+  font-size: 12px; line-height: 1.55; overflow-wrap: anywhere;
+}
+.lab-card-detail[hidden] { display: none !important; }
+.lab-card-detail .sub { font-size: inherit; margin: 0; }
+.lab-analytics { text-align: left; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.lab-analytics h3 { margin: 0 0 10px; }
+.lab-analytics h4 { font-size: 15px; margin: 14px 0 6px; }
+.lab-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 7px; }
+.lab-kpis > div {
+  min-width: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  background: rgba(4,13,37,.3); border: 1px solid rgba(191,223,246,.2);
+  border-radius: 9px; padding: 10px;
+}
+.lab-kpis small { font-size: 11px; color: #bfd3e6; }
+.lab-kpis strong { font-size: clamp(17px,3.2vw,25px); color: #a8fff0; line-height: 1.1; }
+.lab-muted { color: #b8cee0; font-size: 12px; margin: 6px 0; }
+.lab-skills { display: flex; flex-direction: column; gap: 7px; }
+.lab-skill {
+  background: rgba(0,0,0,.18); border: 1px solid rgba(193,224,251,.14);
+  border-radius: 8px; padding: 9px 10px;
+}
+.lab-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.lab-skill-head strong { font-size: 15px; }
+.lab-skill-head b { color: #a8fff0; font-size: 17px; }
+.lab-track { height: 7px; border-radius: 8px; background: rgba(255,255,255,.12); overflow: hidden; margin: 7px 0 5px; }
+.lab-fill { height: 100%; background: #81dbcf; border-radius: 8px; }
+.lab-skill-meta { color: #c3d5e9; font-size: 12px; }
+.lab-details { margin: 6px 0 0; border-top: 1px solid rgba(200,225,250,.14); }
+.lab-details summary {
+  cursor: pointer; color: #bde6f4; min-height: 34px;
+  display: list-item; padding: 8px 3px; font-size: 13px;
+  list-style-position: inside;
+}
+.lab-details[open] summary { color: #a8fff0; }
+.lab-detail-text { color: #cbd9e9; font-size: 12px; line-height: 1.55; padding: 4px 7px 8px; }
+.lab-detail-text .sub { font-size: inherit; margin: 0; }
+.lab-section { border: 1px solid rgba(193,224,251,.2); border-radius: 8px; margin-top: 9px; padding: 0 9px; }
+.lab-section summary { font-size: 14px; }
+.lab-stat-list, .lab-players { display: flex; flex-direction: column; gap: 2px; margin-bottom: 7px; }
+.lab-stat {
+  display: flex; gap: 8px; align-items: baseline; justify-content: space-between;
+  padding: 5px 2px; border-bottom: 1px solid rgba(230,240,250,.09);
+}
+.lab-stat > span { min-width: 0; }
+.lab-stat b { color: #eaf2ff; white-space: nowrap; }
+.lab-other { padding: 5px 0; border-top: 1px solid rgba(230,240,250,.12); }
+@media (max-height: 520px) {
+  #scr-levelup .card { padding: 8px 11px; gap: 10px; }
+  .lab-metric { padding: 4px 7px; }
+  .lab-metric strong { font-size: 13px; }
+  .lab-kpis > div { padding: 7px; }
+  .lab-analytics h4 { margin-top: 10px; }
+}
+@media (max-width: 480px) {
+  .lab-kpis small { font-size: 10px; }
+  .lab-kpis strong { font-size: 16px; }
+}
