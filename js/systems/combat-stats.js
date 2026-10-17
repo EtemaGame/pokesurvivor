@@ -1,11 +1,12 @@
 /* Analítica de combate para el LAB. Sólo memoria de la partida:
  * no altera daño, recompensas, ranking ni el guardado en Firebase.
- * Daño MEDIDO = suma de golpes directos generados por el cliente local.
- * Excluye daño residual de estados y fuentes ambientales; en coop, los
- * totales del equipo provienen del contador que comunica cada jugador.
+ * Daño medido: PS realmente descontados al enemigo (sin exceso por matar ni
+ * absorción de escudos), más quemadura/veneno atribuibles al jugador local.
+ * En enemigos remotos de coop la cifra es provisional hasta confirmar el host.
+ * No atribuye daño de estados aplicado remotamente sin identificar autor.
  */
 G.CombatStats = (() => {
-  let byMove = Object.create(null), total = 0, hits = 0;
+  let byMove = Object.create(null), total = 0, hits = 0, periodic = 0;
 
   const num = n => Number.isFinite(n) ? n : 0;
   const fmt = n => Math.round(num(n)).toLocaleString('es-ES');
@@ -13,22 +14,31 @@ G.CombatStats = (() => {
   const esc = s => String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function reset() { byMove = Object.create(null); total = 0; hits = 0; }
-  function note(pl, id, damage) {
+  function reset() { byMove = Object.create(null); total = 0; hits = 0; periodic = 0; }
+  function note(pl, id, damage, status = null) {
     if (!pl || pl.remote || !id || !Number.isFinite(damage) || damage <= 0) return;
-    if (!byMove[id]) byMove[id] = { id, damage: 0, hits: 0 };
-    byMove[id].damage += damage;
-    byMove[id].hits++;
+    if (!byMove[id]) byMove[id] = { id, damage: 0, hits: 0, periodic: 0, burn: 0, poison: 0 };
+    const row = byMove[id];
+    row.damage += damage;
     total += damage;
-    hits++;
+    if (status === 'burn' || status === 'poison') {
+      periodic += damage;
+      row.periodic += damage;
+      row[status] += damage;
+    } else {
+      row.hits++;
+      hits++;
+    }
   }
+  function damage() { return total; }
   function snapshot(pl, seconds, team) {
     const elapsed = Math.max(1, num(seconds));
     return {
-      total, hits, dps: total / elapsed,
+      total, hits, periodic, direct: total - periodic, dps: total / elapsed,
       moves: Object.values(byMove).map(row => ({
         id: row.id, name: (G.Moves.BY_ID[row.id] || {}).name || row.id,
-        damage: row.damage, hits: row.hits, dps: row.damage / elapsed
+        damage: row.damage, hits: row.hits, periodic: row.periodic,
+        burn: row.burn, poison: row.poison, dps: row.damage / elapsed
       })).sort((a,b) => b.damage - a.damage),
       hp: pl ? pl.hp : 0, maxHp: pl ? pl.maxHp : 0,
       attack: pl ? pl.atk : 0, speed: pl ? pl.spd : 0,
@@ -123,8 +133,10 @@ G.CombatStats = (() => {
       '</span><b>' + b + '</b></div>';
     let out = '<section style="text-align:left;font-size:13px;line-height:1.65">' +
       '<h3 style="margin:6px 0">Análisis de combate</h3>' +
-      line('Daño directo medido', fmt(s.total)) + line('DPS medio desde el inicio', dec(s.dps)) +
-      line('Impactos contabilizados', fmt(s.hits));
+      line('Daño efectivo registrado', fmt(s.total)) +
+      line('Impactos directos', fmt(s.direct)) + line('Quemadura / veneno', fmt(s.periodic)) +
+      line('DPS medio desde el inicio', dec(s.dps)) +
+      line('Impactos directos acertados', fmt(s.hits));
     if (full) {
       out += '<h4 style="margin:12px 0 4px">Tus estadísticas efectivas</h4>' +
         line('Ataque', dec(s.attack)) + line('Defensa · reducción', dec(s.defense * 100) + '%') +
@@ -137,26 +149,30 @@ G.CombatStats = (() => {
       out += '<h4 style="margin:12px 0 4px">Daño por jugador (informado por cada cliente)</h4>';
       for (const p of s.team) out += line(esc(p.name) + (p.own ? ' (tú)' : ''), fmt(p.damage));
     }
-    out += '<h4 style="margin:12px 0 4px">Daño directo por habilidad</h4>';
+    out += '<h4 style="margin:12px 0 4px">Daño por habilidad</h4>';
     for (const row of s.moves) {
       const m = pl && pl.moves.find(x => x.id === row.id) || G.Moves.BY_ID[row.id];
       out += '<div style="padding:6px 0;border-bottom:1px solid #ffffff22"><b>' + esc(row.name) + '</b>' +
-        '<div>' + fmt(row.damage) + ' daño · ' + fmt(row.hits) + ' impactos · ' + dec(row.dps) + ' DPS medio</div>' +
+        '<div>' + fmt(row.damage) + ' daño · ' + fmt(row.hits) + ' impactos · ' + dec(row.dps) + ' DPS medio' +
+        (row.periodic ? ' · ' + fmt(row.periodic) + ' por estados (' +
+          fmt(row.burn) + ' quemadura, ' + fmt(row.poison) + ' veneno)' : '') + '</div>' +
         (full && m ? '<div class="sub" style="font-size:12px">' + details(m, pl) + '</div>' : '') +
         '</div>';
     }
-    if (!s.moves.length) out += '<p class="sub">Todavía no has acertado golpes directos.</p>';
+    if (!s.moves.length) out += '<p class="sub">Todavía no hay daño atribuido a habilidades.</p>';
     if (full && pl) {
       const unseen = pl.moves.filter(m => !byMove[m.id]);
       if (unseen.length) out += '<h4 style="margin:12px 0 4px">Otras habilidades equipadas</h4>' +
         unseen.map(m => '<div style="padding:5px 0"><b>' + esc(m.name) + '</b><div class="sub" style="font-size:12px">' +
           details(m, pl) + '</div></div>').join('');
     }
-    return out + '<p class="sub" style="font-size:11px;margin:10px 0 0">El DPS medio es daño directo / tiempo de ronda. ' +
-      'No incluye daño periódico de quemadura, veneno ni ambiental. El DPS teórico supone un impacto constante en ' +
-      'un enemigo neutro, sin clima, y no predice aciertos, área ni defensas del objetivo. ' +
-      'En cooperativo, el daño de otros jugadores es el informado por sus propios clientes.</p></section>';
+    return out + '<p class="sub" style="font-size:11px;margin:10px 0 0">El DPS medio es daño efectivo registrado / tiempo de ronda. ' +
+      'El daño de quemadura y veneno se atribuye al último movimiento local que aplicó cada estado. ' +
+      'No incluye daño ambiental ni efectos remotos sin autor conocido. El DPS teórico supone un impacto ' +
+      'constante sobre un enemigo neutro, sin clima, y no predice aciertos ni objetivos múltiples. ' +
+      'En cooperativo, el daño en enemigos remotos es una estimación del cliente, y los totales ' +
+      'de otros jugadores son los que informa cada uno.</p></section>';
   }
 
-  return { reset, note, snapshot, theoretical, details, cardInfo, html, render, fmt, dec };
+  return { reset, note, damage, snapshot, theoretical, details, cardInfo, html, render, fmt, dec };
 })();
