@@ -147,6 +147,17 @@ G.HUD = (() => {
 
     if (G.Coop.active) drawCoop(ctx, w, h, pl, px, py + (bx > px ? 56 : 40));
 
+    // Estadísticas compactas del jugador local; desglose completo en Pausa.
+    if (G.CombatStats && G.Game && G.Game.state === 'playing') {
+      const combat = G.CombatStats.snapshot(pl, st.time);
+      const teammates = G.Coop.active ? G.Coop.mates.filter(x => x.connected).length : 0;
+      ctx.font = F(700, 10);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#91e5d4';
+      ctx.fillText('DAÑO ' + G.CombatStats.fmt(combat.total) +
+        '  ·  DPS ' + G.CombatStats.dec(combat.dps), px, py + 64 + teammates * 15);
+    }
+
     // Grieta: flecha grande que late en el borde si no se ve, y si se ve, una
     // flecha que bota encima; en la arena, cuenta atrás.
     const rift = G.Rift.rift;
