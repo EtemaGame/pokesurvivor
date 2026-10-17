@@ -89,6 +89,25 @@ G.CombatStats = (() => {
     return label ? label : '';
   }
 
+  /** Geometría nominal, antes de obstáculos, movimiento y posibles fallos. */
+  function reachInfo(m) {
+    if (!m) return null;
+    const radii = {
+      melee: 'Alcance', beam: 'Alcance', aura: 'Radio', orbit: 'Radio órbita',
+      chain: 'Alcance del salto', mine: 'Radio explosión',
+      meteor: 'Radio impacto', dash: 'Distancia máx.', trail: 'Radio charco',
+      boomerang: 'Distancia de ida'
+    };
+    if (radii[m.kind] && Number.isFinite(m.radius))
+      return { label: radii[m.kind], value: m.radius };
+    if (m.kind === 'turret' && Number.isFinite(m.range))
+      return { label: 'Alcance torreta', value: m.range };
+    if (['projectile', 'nova', 'cone'].includes(m.kind) &&
+        Number.isFinite(m.speed) && Number.isFinite(m.life))
+      return { label: 'Recorrido máx. aprox.', value: m.speed * m.life };
+    return null;
+  }
+
   /** Datos comprobables, sin prometer cuántas veces se acertará un golpe. */
   function details(m, pl) {
     const a = theoretical(m, pl);
@@ -110,6 +129,9 @@ G.CombatStats = (() => {
     const amount = quantity(m);
     if (amount) s += '<div>Genera: <b>' + a.count + ' ' + amount +
       '</b> (no significa que impacten todos).</div>';
+    const reach = reachInfo(m);
+    if (reach) s += '<div>' + reach.label + ': <b>' + fmt(reach.value) +
+      ' unidades</b> (sin contar paredes u obstáculos).</div>';
     s += '<div>El tipo del rival modifica el daño: <b>×0,3 a ×2,4</b> según resistencias y debilidades; el clima también puede influir.</div>';
     if (a.hex) s += '<div>Contra quemados, envenenados o lentos: <b>×' +
       dec(a.hex) + ' (+' + dec((a.hex - 1) * 100) + '%; ' +
@@ -121,6 +143,9 @@ G.CombatStats = (() => {
     if (m.slow) s += '<div>Ralentiza al objetivo: -' + fmt(m.slow * 100) + '% de velocidad durante 1,2 s.</div>';
     return s;
   }
+
+  const mFieldChanged = (a, b, field) =>
+    Number.isFinite(b[field]) && Math.abs((a[field] || 0) - b[field]) > .00001;
 
   /** Resumen breve de datos fiables para elegir una carta sin leer párrafos técnicos. */
   function cardBrief(card, pl) {
@@ -157,8 +182,18 @@ G.CombatStats = (() => {
       : preview.kind === 'turret' ? 'Disparo cada' : 'Recarga';
     out += metric(label, delta(existing && frequency(existing), frequency(preview), dec) + ' s');
     const amount = quantity(preview);
-    if (amount) out += metric(amount.charAt(0).toUpperCase() + amount.slice(1),
-      delta(existing && existing.count, preview.count, fmt));
+    if (amount && (!existing || existing.count !== preview.count))
+      out += metric(amount.charAt(0).toUpperCase() + amount.slice(1),
+        delta(existing && existing.count, preview.count, fmt));
+    const oldReach = reachInfo(existing), newReach = reachInfo(preview);
+    if (newReach && existing && oldReach &&
+        Math.abs(oldReach.value - newReach.value) > .01)
+      out += metric(newReach.label, fmt(oldReach.value) + ' → ' + fmt(newReach.value));
+    if (existing && mFieldChanged(existing, preview, 'pierce'))
+      out += metric('Perforación', fmt(existing.pierce || 0) + ' → ' + fmt(preview.pierce || 0));
+    if (existing && mFieldChanged(existing, preview, 'dur') &&
+        ['trail', 'mine', 'turret'].includes(preview.kind))
+      out += metric('Duración', dec(existing.dur || 0) + ' → ' + dec(preview.dur || 0) + ' s');
     if (after.hex > 1)
       out += metric('Con estado', '+' + dec((after.hex - 1) * 100) + '% daño');
     return '<div class="lab-card-metrics">' + out + '</div>';
@@ -204,11 +239,20 @@ G.CombatStats = (() => {
         (old ? dec(Math.max(.05, existing.cd * pl.cdMul)) + ' → ' : '') +
         dec(Math.max(.05, m.cd * pl.cdMul)) + ' s</b></div>';
     }
+    const reach = reachInfo(m);
+    if (reach) {
+      const oldReach = reachInfo(existing);
+      txt += '<div>' + reach.label + ': <b>' +
+        (oldReach && Math.abs(oldReach.value - reach.value) > .01
+          ? fmt(oldReach.value) + ' → ' : '') +
+        fmt(reach.value) + ' unidades</b> (antes de obstáculos).</div>';
+    }
     if (cur.hex)
       txt += '<div>Con quemadura, veneno o ralentización: <b>×' + dec(cur.hex) +
         ' = ' + fmt(cur.baseDamage * cur.hex) + ' por primer golpe base</b>.</div>';
-    if (m.burn || m.poison || m.slow)
-      txt += '<div>' + details(m, pl).replace(/^.*?(?=<div>Quemadura:|<div>Veneno:|<div>Ralentiza al objetivo:)/s, '') + '</div>';
+    if (m.burn) txt += '<div>Quemadura: ' + fmt(m.burn) + ' carga(s) por golpe.</div>';
+    if (m.poison) txt += '<div>Veneno: ' + fmt(m.poison) + ' carga(s) por golpe.</div>';
+    if (m.slow) txt += '<div>Ralentiza: ' + fmt(m.slow * 100) + '% durante 1,2 s.</div>';
     return txt + '<div class="lab-muted">Estos valores no incluyen debilidades elementales (×0,3–×2,4), ' +
       'clima ni el daño adicional por críticos. No se puede comparar el rendimiento total ' +
       'de dos habilidades sin saber cuántos proyectiles golpean a cuántos enemigos.</div>';
