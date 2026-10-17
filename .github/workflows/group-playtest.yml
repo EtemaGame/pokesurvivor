@@ -5,6 +5,7 @@ on:
       - feat/group-playtest-sandbox
       - fix/lab-party-and-resume-slow
       - fix/lab-coop-room-creation
+      - feat/lab-combat-analytics
   workflow_dispatch:
 
 concurrency:
@@ -31,11 +32,15 @@ jobs:
           node --check js/ui/social-ui.js
           node --check js/systems/rift.js
           node --check js/entities/player.js
-          node --check js/entities/player.js
+          node --check js/systems/combat.js
+          node --check js/systems/combat-stats.js
+          node --check js/ui/hud.js
+          node --check js/ui/run-ui.js
+          node --check js/net/coop.js
           node --check tools/prepare-playtest.cjs
           node --check tools/deploy-playtest.cjs
       - name: Test protection and gameplay
-        run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs tests/party-invitations.test.cjs
+        run: node --test tests/level-transition.test.cjs tests/playtest-lab.test.cjs tests/party-invitations.test.cjs tests/combat-stats.test.cjs
       - name: Build preview for Etéma sandbox
         run: node tools/prepare-playtest.cjs
       - name: Ensure production config is absent
