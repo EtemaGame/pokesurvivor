@@ -64,6 +64,23 @@
         if (r.ok) $('fr-name').value = '';
       };
       $('fr-room').onclick = () => G.LobbyUI.open();
+      // Antes solo podía crearse una sala indirectamente al invitar. Cuando
+      // no había amigos visibles online, nadie encontraba cómo empezar Coop.
+      $('fr-create').onclick = async () => {
+        const btn = $('fr-create');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        msg('Creando sala…');
+        try {
+          await G.Social.createRoom();
+          G.LobbyUI.open();
+        } catch (e) {
+          const code = e && (e.code || e.message) || 'conexión';
+          msg('No se pudo crear la sala (' + code + '). Comprueba Realtime Database.', true);
+        } finally {
+          btn.disabled = false;
+        }
+      };
       G.Social.on(() => { if (G.UI.isOpen('scr-friends')) render(); });
     }
 
@@ -100,6 +117,7 @@
       const room = G.Social.room;
       $('fr-me').innerHTML = 'Tu apodo: <b class="gold" translate="no">' + esc(G.Social.me ? G.Social.me.name : '') + '</b> · dáselo a tus amigos para que te añadan.';
       $('fr-room').classList.toggle('hidden', !room);
+      $('fr-create').classList.toggle('hidden', !!room);
       const list = G.Social.friends.sort((a, b) => {
         const rank = f => f.status === 'in' ? 0 : f.status === 'ok' ? (f.online ? (f.play ? 2 : 1) : 3) : 4;
         return rank(a) - rank(b) || a.name.localeCompare(b.name);
