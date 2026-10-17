@@ -53,13 +53,26 @@ G.RunUI = (() => {
           ? `<span class="tag-chip" style="background:${c.color}">${c.tag}</span>`
           : `<span class="tag-chip" style="background:${c.color === '#ffd23f' ? '#ffd23f' : '#9fb1c9'}">${c.tag}</span>`;
       if (c.type === 'evo') el.classList.add('evo');
-      const metrics = G.CombatStats && G.Game && G.Game.player ?
-        G.CombatStats.cardInfo(c, G.Game.player) : '';
+      const hasAnalytics = G.CombatStats && G.Game && G.Game.player;
+      const metrics = hasAnalytics ? G.CombatStats.cardBrief(c, G.Game.player) : '';
+      const extended = hasAnalytics ? G.CombatStats.cardInfo(c, G.Game.player) : '';
       el.innerHTML =
         `<div class="ico" style="background:${c.color}33">${G.Icons.html(c.icon, 32)}</div>
          <div class="txt"><div class="nm">${c.title} ${tag}</div><div class="ds">${c.desc}</div>
-         ${metrics ? '<div style="color:#98e2dd;font-size:12px;margin-top:5px;line-height:1.45">' + metrics + '</div>' : ''}</div>
+         ${metrics}
+         ${extended ? '<button type="button" class="lab-more" data-sfx="none" aria-expanded="false">Más información ▾</button>' +
+          '<div class="lab-card-detail" hidden>' + extended + '</div>' : ''}</div>
          <div class="key">${i + 1}</div>`;
+      const toggle = el.querySelector('.lab-more');
+      if (toggle) toggle.onclick = e => {
+        e.preventDefault();
+        e.stopPropagation(); // En móvil, abrir detalles NO elige la carta.
+        const info = el.querySelector('.lab-card-detail');
+        const expanded = info.hidden;
+        info.hidden = !expanded;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.textContent = expanded ? 'Ocultar información ▴' : 'Más información ▾';
+      };
       el.dataset.sfx = 'none';             // el juego pone su propio sonido al elegir
       el.onclick = () => pick(i);
       box.appendChild(el);
