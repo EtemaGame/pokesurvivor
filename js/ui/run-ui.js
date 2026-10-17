@@ -53,9 +53,12 @@ G.RunUI = (() => {
           ? `<span class="tag-chip" style="background:${c.color}">${c.tag}</span>`
           : `<span class="tag-chip" style="background:${c.color === '#ffd23f' ? '#ffd23f' : '#9fb1c9'}">${c.tag}</span>`;
       if (c.type === 'evo') el.classList.add('evo');
+      const metrics = G.CombatStats && G.Game && G.Game.player ?
+        G.CombatStats.cardInfo(c, G.Game.player) : '';
       el.innerHTML =
         `<div class="ico" style="background:${c.color}33">${G.Icons.html(c.icon, 32)}</div>
-         <div class="txt"><div class="nm">${c.title} ${tag}</div><div class="ds">${c.desc}</div></div>
+         <div class="txt"><div class="nm">${c.title} ${tag}</div><div class="ds">${c.desc}</div>
+         ${metrics ? '<div style="color:#98e2dd;font-size:12px;margin-top:5px;line-height:1.45">' + metrics + '</div>' : ''}</div>
          <div class="key">${i + 1}</div>`;
       el.dataset.sfx = 'none';             // el juego pone su propio sonido al elegir
       el.onclick = () => pick(i);
@@ -129,6 +132,8 @@ G.RunUI = (() => {
         <p>¿Te está gustando PokéSurvivor? Lo hago yo solo y los servidores cuestan dinero. Si quieres, puedes ayudarme a mantenerlo en línea.</p>
         <a class="btn small gold" href="${G.Funding.url}" target="_blank" rel="noopener">${G.Icons.html('heart', 14)} Apoyar en Ko-fi</a>
       </div>` : ''}`;
+    if (G.CombatStats && r.combat)
+      $('over-analysis').innerHTML = G.CombatStats.render(r.combat, G.Game.player);
     const ask = $('over-ask');
     if (ask) ask.querySelector('.x').onclick = () => ask.remove();
     $('btn-again').onclick = onBack;
@@ -227,6 +232,11 @@ G.RunUI = (() => {
 
   function showPause(coop = false) {
     G.UI.soundControls($('pause-sound'));
+    if (G.CombatStats && G.Game && G.Game.player) {
+      const pl = G.Game.player;
+      $('pause-analysis').innerHTML = G.CombatStats.html(pl, G.Game.st.time,
+        coop && G.Coop.active ? G.Coop.players() : [pl]);
+    }
     $('pause-coop').classList.toggle('hidden', !coop);
     $('btn-quit').textContent = coop ? 'Salir de la partida' : 'Abandonar run';
     G.UI.show('scr-pause');
