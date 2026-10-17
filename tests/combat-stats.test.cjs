@@ -50,7 +50,8 @@ test('Infortunio muestra multiplicador real 1,7x y daño condicional con ataque 
   assert.equal(a.damage, raw.dmg * 2 * 1.05);
   assert.equal(a.cd, raw.cd * .8);
   assert.ok(stats.details(raw, pl).includes('×1,7'));
-  assert.ok(stats.cardInfo({ key: 'new:hex' }, pl).includes('Con estado: ×1,7'));
+  assert.ok(stats.cardInfo({ key: 'new:hex' }, pl).includes('×1,7'));
+  assert.ok(!stats.cardInfo({ key: 'new:hex' }, pl).includes('DPS'));
 });
 
 test('comparador de mejoras usa de verdad la escalera aplicada, sin mutar el movimiento', () => {
@@ -61,8 +62,8 @@ test('comparador de mejoras usa de verdad la escalera aplicada, sin mutar el mov
   assert.equal(G.Moves.levelUp(cloned), true);
   const preview = G.CombatStats.cardInfo({ type: 'up', key: 'up:ember' }, pl);
   assert.ok(preview.includes('→'));
-  assert.ok(preview.includes(G.CombatStats.fmt(before.dmg * pl.atk * 1.05)));
-  assert.ok(preview.includes(G.CombatStats.fmt(cloned.dmg * pl.atk * 1.05)));
+  assert.ok(preview.includes(G.CombatStats.fmt(before.dmg * pl.atk)));
+  assert.ok(preview.includes(G.CombatStats.fmt(cloned.dmg * pl.atk)));
   assert.equal(before.lvl, 1);
   assert.equal(before.dmg, G.Moves.BY_ID.ember.dmg);
 });
@@ -184,11 +185,14 @@ test('la carta muestra tres números claros y deja el detalle bajo demanda', () 
   const { G, pl } = fixture();
   pl.moves = [G.Moves.instance('ember', 2)]; // siguiente nivel aumenta el daño
   const summary = G.CombatStats.cardBrief({ key: 'new:hex' }, pl);
-  assert.ok(summary.includes('Daño / golpe'));
-  assert.ok(summary.includes('DPS teórico'));
-  assert.ok(summary.includes('Cada'));
+  assert.ok(summary.includes('Daño base / golpe'));
+  assert.ok(!summary.includes('DPS'), 'las cartas no deben prometer DPS por impacto');
+  assert.ok(summary.includes('Recarga'));
   assert.ok(summary.includes('Con estado'));
   assert.ok(summary.includes('+70% daño'));
+  assert.ok(summary.includes('Objetivos máximos'));
+  assert.ok(!G.CombatStats.cardInfo({ key: 'new:hex' }, pl).includes('DPS'));
+  assert.ok(G.CombatStats.cardInfo({ key: 'new:hex' }, pl).includes('clima'));
   assert.ok(!summary.includes('Comparación:'), 'el resumen no debe ser un párrafo largo');
   const up = G.CombatStats.cardBrief({ key: 'up:ember' }, pl);
   assert.ok(up.includes('→'), 'la mejora compara antes y después');
@@ -234,4 +238,19 @@ test('en móvil el botón de detalles no elige la carta por accidente', () => {
   assert.ok(run.includes('info.hidden = !expanded'));
   assert.ok(css.includes('.lab-card-detail[hidden]'));
   assert.ok(css.includes('@media (max-height: 520px)'));
+});
+
+test('las cartas muestran datos sin prometer DPS ni suponer aciertos de proyectiles', () => {
+  const { G, pl } = fixture();
+  const b = G.CombatStats.cardBrief({ key: 'new:ember' }, pl);
+  assert.ok(b.includes('Daño base / golpe'));
+  assert.ok(b.includes('Proyectiles'));
+  assert.ok(b.includes('Recarga'));
+  assert.ok(!b.includes('DPS'));
+  const c = G.CombatStats.cardInfo({ key: 'new:ember' }, pl);
+  assert.ok(c.includes('Crítico (×1,5)'));
+  assert.ok(c.includes('debilidades elementales'));
+  assert.ok(!c.includes('DPS'));
+  assert.ok(G.CombatStats.html(pl, 10, [pl]).includes('DPS medio'),
+    'el DPS medido durante la ronda sí debe conservarse en el informe');
 });
